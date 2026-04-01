@@ -1,243 +1,299 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  TextInput,
-  FlatList,
   TouchableOpacity,
   SafeAreaView,
+  ScrollView,
+  TextInput,
   Image,
 } from "react-native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import Filter from '../../asset/filter_icon.svg';
+import Cart from '../../asset/cart.svg';
+import BackArrow from '../../asset/back-arrow.svg';
+import Search from '../../asset/search-icon.svg';
 
-// ─── SAMPLE PRODUCTS ─────────────────
-const products = [
+const DEFAULT_PRODUCTS = [
   {
-    id: "1",
+    id: "APP-I5P-256-BL",
     name: "iPhone 15 Pro - Blue Titanium",
-    price: "$999.00",
-    stock: "IN STOCK",
-    image: "https://via.placeholder.com/120",
+    sku: "APP-I5P-256-BL",
+    currency: "₹",
+    price: 999.0,
+    status: "IN STOCK",
+    statusColor: "#3d5af1",
+    category: "Smartphones",
+    color: "Blue Titanium",
+    storage: "256 GB",
+    stockQty: 24,
+    image: "https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=400&q=80",
   },
   {
-    id: "2",
+    id: "SAM-S24U-512-TI",
     name: "Samsung S24 Ultra - Titanium Gray",
-    price: "$1,299.00",
-    stock: "LOW STOCK",
-    image: "https://via.placeholder.com/120",
-  },
-  {
-    id: "3",
-    name: "iPhone 15 - Pink 128GB",
-    price: "$799.00",
-    stock: "IN STOCK",
-    image: "https://via.placeholder.com/120",
-  },
-  {
-    id: "4",
-    name: "Google Pixel 8 Pro",
-    price: "$899.00",
-    stock: "IN STOCK",
-    image: "https://via.placeholder.com/120",
+    sku: "SAM-S24U-512-TI",
+    currency: "₹",
+    price: 1299.0,
+    status: "LOW STOCK",
+    statusColor: "#ef4444",
+    category: "Smartphones",
+    color: "Titanium Gray",
+    storage: "512 GB",
+    stockQty: 3,
+    image: "https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?w=400&q=80",
   },
 ];
 
-const categories = ["All", "iPhone", "Samsung", "Pixel", "Watch"];
+export default function ProductsScreen() {
+  const navigation = useNavigation();
+  const [search, setSearch] = useState("");
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [cartCount, setCartCount] = useState(0);
+  const [addedIds, setAddedIds] = useState({});
+  const [allProducts, setAllProducts] = useState([]);
+  const [categories, setCategories] = useState(["All"]);
 
-// ─── COMPONENT ───────────────────────
-export default function POSScreen() {
-  const [active, setActive] = useState("All");
-
-  const renderItem = ({ item }) => (
-    <View style={styles.card}>
-      <Text
-        style={[
-          styles.stockBadge,
-          { backgroundColor: item.stock === "LOW STOCK" ? "#ff4d4d" : "#4caf50" },
-        ]}
-      >
-        {item.stock}
-      </Text>
-
-      <Image source={{ uri: item.image }} style={styles.image} />
-
-      <Text style={styles.name}>{item.name}</Text>
-
-      <Text style={styles.price}>{item.price}</Text>
-
-      <TouchableOpacity style={styles.addBtn}>
-        <Text style={{ color: "#fff" }}>＋</Text>
-      </TouchableOpacity>
-    </View>
+  useFocusEffect(
+    useCallback(() => {
+      loadAll();
+    }, [])
   );
+
+  const loadAll = async () => {
+    try {
+      const prodData = await AsyncStorage.getItem("products");
+      const savedProds = prodData ? JSON.parse(prodData) : [];
+      const merged = [
+        ...savedProds,
+        ...DEFAULT_PRODUCTS.filter((d) => !savedProds.find((s) => s.id === d.id)),
+      ];
+      setAllProducts(merged);
+
+      const catData = await AsyncStorage.getItem("categories");
+      const savedCats = catData ? JSON.parse(catData) : [];
+      const catNames = ["All", "Smartphones", "Accessories", ...savedCats.map((c) => c.name)];
+      setCategories([...new Set(catNames)]);
+
+      const cartData = await AsyncStorage.getItem("cart");
+      const cart = cartData ? JSON.parse(cartData) : [];
+      setCartCount(cart.reduce((sum, item) => sum + item.qty, 0));
+    } catch (e) {}
+  };
+
+  const handleAddToCart = async (product) => {
+    try {
+      const data = await AsyncStorage.getItem("cart");
+      const cart = data ? JSON.parse(data) : [];
+      const existing = cart.findIndex((i) => i.id === product.id);
+      if (existing >= 0) { cart[existing].qty += 1; }
+      else { cart.push({ ...product, qty: 1 }); }
+      await AsyncStorage.setItem("cart", JSON.stringify(cart));
+      setCartCount(cart.reduce((sum, item) => sum + item.qty, 0));
+      setAddedIds((prev) => ({ ...prev, [product.id]: true }));
+      setTimeout(() => setAddedIds((prev) => ({ ...prev, [product.id]: false })), 600);
+    } catch (e) {}
+  };
+
+  const filtered = allProducts.filter((p) => {
+    const matchCat = activeCategory === "All" || p.category === activeCategory;
+    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase());
+    return matchCat && matchSearch;
+  });
 
   return (
     <SafeAreaView style={styles.container}>
 
       {/* HEADER */}
       <View style={styles.header}>
-        <Text style={styles.title}>Vishnu Shop</Text>
-        <Text style={styles.user}>👤</Text>
-      </View>
-
-      {/* SEARCH */}
-      <View style={styles.searchRow}>
-        <TextInput
-          placeholder="Search models..."
-          style={styles.search}
-        />
-        <TouchableOpacity style={styles.filter}>
-          <Text>⚙️</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* CATEGORIES */}
-      <View style={styles.tabs}>
-        {categories.map((cat) => (
-          <TouchableOpacity
-            key={cat}
-            onPress={() => setActive(cat)}
-            style={[
-              styles.tab,
-              active === cat && styles.activeTab,
-            ]}
-          >
-            <Text
-              style={active === cat ? styles.activeText : styles.tabText}
-            >
-              {cat}
-            </Text>
+        <View style={styles.headerTitle}>
+          <View style={styles.headerDot} />
+          <Text style={styles.headerTitleText}>Vishnu Mobile Shop</Text>
+        </View>
+        <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate("Cart")}>
+            <Cart width={18} height={18} fill="#fff" stroke="#fff" />
+            {cartCount > 0 && (
+              <View style={styles.cartBadge}>
+                <Text style={styles.cartBadgeText}>{cartCount > 99 ? "99+" : cartCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
-        ))}
+        </View>
       </View>
 
-      {/* PRODUCT GRID */}
-      <FlatList
-        data={products}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        numColumns={2}
-        contentContainerStyle={{ padding: 10 }}
-      />
+      <ScrollView showsVerticalScrollIndicator={false}>
 
-      {/* BOTTOM NAV */}
-      <View style={styles.nav}>
-        <Text style={styles.navItem}>🏠</Text>
-        <Text style={styles.navItem}>📦</Text>
-        <Text style={styles.navActive}>💳</Text>
-        <Text style={styles.navItem}>👥</Text>
-        <Text style={styles.navItem}>⋯</Text>
-      </View>
+        {/* SEARCH + FILTER */}
+        <View style={styles.searchRow}>
+          <View style={styles.searchBox}>
+            <Search width={20} height={20} fill="#2D2F8E" stroke="#2D2F8E" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search models..."
+              placeholderTextColor="#aaa"
+              value={search}
+              onChangeText={setSearch}
+            />
+          </View>
+          <TouchableOpacity style={styles.filterBtn}>
+            <Filter width={20} height={20} fill="#1a2e6c" stroke="#1a2e6c" />
+          </TouchableOpacity>
+        </View>
 
+        {/* CATEGORY TABS */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow}>
+          {categories.map((cat) => (
+            <TouchableOpacity
+              key={cat}
+              style={[styles.catChip, activeCategory === cat && styles.catChipActive]}
+              onPress={() => setActiveCategory(cat)}
+            >
+              <Text style={[styles.catChipText, activeCategory === cat && styles.catChipTextActive]}>
+                {cat}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* PRODUCT GRID */}
+        <View style={styles.grid}>
+          {filtered.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>📦</Text>
+              <Text style={styles.emptyText}>No products found</Text>
+              <Text style={styles.emptySub}>Add products from the Inventory screen</Text>
+            </View>
+          ) : (
+            filtered.map((product) => (
+              <TouchableOpacity
+                key={product.id}
+                style={styles.card}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate("ProductDetails", { product })}
+              >
+                {/* Status badge */}
+                <View style={[styles.statusBadge, { backgroundColor: product.statusColor }]}>
+                  <Text style={styles.statusText}>{product.status}</Text>
+                </View>
+
+                {/* Product image */}
+                {product.image ? (
+                  <Image source={{ uri: product.image }} style={styles.productImage} resizeMode="cover" />
+                ) : (
+                  <View style={[styles.productImage, styles.noImage]}>
+                    <Text style={styles.noImageIcon}>🖼️</Text>
+                  </View>
+                )}
+
+                {/* Info */}
+                <View style={styles.cardBody}>
+                  <Text style={styles.skuText}>{product.sku}</Text>
+                  <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
+                  <View style={styles.priceRow}>
+                    <View>
+                      <Text style={styles.retailLabel}>Retail Price</Text>
+                      <Text style={styles.priceText}>
+                        {product.currency || "₹"}{Number(product.price).toFixed(2)}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.addBtn, addedIds[product.id] && styles.addBtnAdded]}
+                      onPress={(e) => { e.stopPropagation?.(); handleAddToCart(product); }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.addBtnText}>{addedIds[product.id] ? "✓" : "+"}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
+
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
-// ─── STYLES ─────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F5F6FA" },
-
+  // Header — unified style
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    padding: 16,
+    backgroundColor: '#fff', paddingHorizontal: 20, paddingVertical: 14,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    elevation: 2,
   },
-
-  title: { fontSize: 18, fontWeight: "bold" },
-  user: { fontSize: 18 },
-
+  headerTitle: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerTitleText: { fontSize: 16, fontWeight: '800', color: '#2D2F8E' },
+  headerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e' },
+  iconBtn: {
+    backgroundColor: '#2D2F8E', borderRadius: 10,
+    width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
+    position: 'relative',
+  },
+  cartBadge: {
+    position: 'absolute', top: -4, right: -4, backgroundColor: '#2D2F8E',
+    borderRadius: 10, minWidth: 18, height: 18,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 3, borderWidth: 1.5, borderColor: '#fff',
+  },
+  cartBadgeText: { color: "#fff", fontSize: 9, fontWeight: "800" },
   searchRow: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-    marginBottom: 10,
+    flexDirection: "row", paddingHorizontal: 16, paddingTop: 14, gap: 10, alignItems: "center",
   },
-
-  search: {
-    flex: 1,
-    backgroundColor: "#eee",
-    borderRadius: 10,
-    padding: 10,
+  searchBox: {
+    flex: 1, flexDirection: "row", alignItems: "center",
+    backgroundColor: "#fff", borderRadius: 12,
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderWidth: 1, borderColor: "#e8ecf4", gap: 8,
   },
-
-  filter: {
-    marginLeft: 10,
-    backgroundColor: "#eee",
-    padding: 10,
-    borderRadius: 10,
+  searchInput: { flex: 1, fontSize: 14, color: "#333" },
+  filterBtn: {
+    width: 44, height: 44, backgroundColor: "#fff", borderRadius: 12,
+    alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#e8ecf4",
   },
-
-  tabs: {
-    flexDirection: "row",
-    paddingHorizontal: 10,
-    marginBottom: 10,
+  catRow: { paddingHorizontal: 16, paddingVertical: 14, gap: 8 },
+  catChip: {
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: "#fff", borderWidth: 1, borderColor: "#e8ecf4",
   },
-
-  tab: {
-    backgroundColor: "#ddd",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginRight: 8,
+  catChipActive: { backgroundColor: '#2D2F8E', borderColor: '#2D2F8E' },
+  catChipText: { fontSize: 13, fontWeight: "600", color: "#666" },
+  catChipTextActive: { color: "#fff" },
+  grid: {
+    flexDirection: "row", flexWrap: "wrap",
+    paddingHorizontal: 12, gap: 12, paddingBottom: 24,
   },
-
-  activeTab: {
-    backgroundColor: "#3D5AF1",
-  },
-
-  tabText: { color: "#555" },
-  activeText: { color: "#fff" },
-
+  emptyState: { flex: 1, width: "100%", alignItems: "center", paddingVertical: 60 },
+  emptyIcon: { fontSize: 48, marginBottom: 12 },
+  emptyText: { fontSize: 16, fontWeight: "700", color: "#333" },
+  emptySub: { fontSize: 13, color: "#aaa", marginTop: 4 },
   card: {
-    flex: 1,
-    backgroundColor: "#fff",
-    margin: 6,
-    padding: 10,
-    borderRadius: 12,
+    width: "47%", backgroundColor: "#fff",
+    borderRadius: 14, overflow: "hidden", elevation: 3, position: "relative",
   },
-
-  stockBadge: {
-    color: "#fff",
-    fontSize: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    alignSelf: "flex-start",
+  statusBadge: {
+    position: "absolute", top: 8, left: 8,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, zIndex: 1,
   },
-
-  image: {
-    width: "100%",
-    height: 100,
-    borderRadius: 10,
-    marginVertical: 6,
-  },
-
-  name: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-
-  price: {
-    fontSize: 14,
-    fontWeight: "bold",
-    marginTop: 4,
-  },
-
+  statusText: { color: "#fff", fontSize: 8, fontWeight: "800", letterSpacing: 0.5 },
+  productImage: { width: "100%", height: 130, backgroundColor: "#1a1a2e" },
+  noImage: { alignItems: "center", justifyContent: "center" },
+  noImageIcon: { fontSize: 36 },
+  cardBody: { padding: 10 },
+  skuText: { fontSize: 9, color: "#aaa", marginBottom: 3 },
+  productName: { fontSize: 12, fontWeight: "700", color: "#1a1a2e", marginBottom: 8, lineHeight: 17 },
+  priceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
+  retailLabel: { fontSize: 9, color: "#aaa", marginBottom: 2 },
+  priceText: { fontSize: 14, fontWeight: '800', color: '#2D2F8E' },
   addBtn: {
-    backgroundColor: "#3D5AF1",
-    padding: 6,
-    borderRadius: 8,
-    alignItems: "center",
-    marginTop: 6,
+    width: 30, height: 30, backgroundColor: '#2D2F8E',
+    borderRadius: 8, alignItems: 'center', justifyContent: 'center',
   },
-
-  nav: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    padding: 10,
-    borderTopWidth: 1,
-    borderColor: "#ddd",
-  },
-
-  navItem: { fontSize: 18, color: "#888" },
-  navActive: { fontSize: 18, color: "#3D5AF1" },
+  addBtnAdded: { backgroundColor: "#22c55e" },
+  addBtnText: { color: "#fff", fontSize: 18, fontWeight: "700", lineHeight: 22 },
 });

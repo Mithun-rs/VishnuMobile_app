@@ -11,9 +11,9 @@ import {
   Alert,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { generateAndSharePDF } from '../../utils/exportUtils';
-import FilterIcon from '../../asset/filter_icon.svg';
-import DownloadIcon from '../../asset/upload.svg';
+import { generateAndSharePDF } from '../../../utils/exportUtils';
+import FilterIcon from '../../../asset/filter_icon.svg';
+import DownloadIcon from '../../../asset/upload.svg';
 // Install: npm install react-native-qrcode-svg react-native-svg
 // Then: cd ios && pod install
 
@@ -163,8 +163,10 @@ const Header = () => (
       <View style={styles.dot} />
       <Text style={styles.headerTitleText}>Vishnu Mobile Shop</Text>
     </View>
-    <View style={styles.iconBtn}>
-      <IconPlaceholder name="Bell" size={16} color="#fff" />
+    <View style={styles.headerRight}>
+      <View style={styles.iconBtn}>
+        <IconPlaceholder name="Bell" size={16} color="#fff" />
+      </View>
     </View>
   </View>
 );
@@ -291,7 +293,7 @@ const FilterModal = ({
 );
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
-const AttendanceScreen = () => {
+const AttendanceScreen = ({ navigation }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalType, setModalType] = useState('in');
   const [modalQRValue, setModalQRValue] = useState('');
@@ -381,10 +383,19 @@ const AttendanceScreen = () => {
         <Header />
 
         {/* ── Page Title ── */}
-        <View style={styles.pageTitleRow}>
-          <Text style={styles.pageTitle}>Attendance</Text>
-          <Text style={styles.pageSubtitle}>Operations Control</Text>
-        </View>
+        {/* ── Page Title ── */}
+<View style={styles.pageTitleRow}>
+  <View>
+    <Text style={styles.pageTitle}>Attendance</Text>
+    <Text style={styles.pageSubtitle}>Operations Control</Text>
+  </View>
+  <TouchableOpacity
+    style={styles.staffListBtn}
+    onPress={() => navigation.navigate('StaffList')}
+    activeOpacity={0.85}>
+    <Text style={styles.staffListBtnText}>👥 Staff List</Text>
+  </TouchableOpacity>
+</View>
 
         {/* ── Check In / Out Cards ── */}
         <View style={styles.cardsRow}>
@@ -428,7 +439,7 @@ const AttendanceScreen = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F2F4F7',
+    backgroundColor: '#F5F6FA',
   },
   scrollView: {
     flex: 1,
@@ -448,6 +459,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   headerTitle: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerRight: { flexDirection: 'row', gap: 8 },
   headerTitleText: { fontSize: 16, fontWeight: '800', color: '#2D2F8E' },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e' },
   iconBtn: {
@@ -472,7 +484,31 @@ const styles = StyleSheet.create({
     color: '#8A9BB0',
     marginTop: 2,
   },
-
+pageTitleRow: {
+  paddingHorizontal: 16,
+  paddingTop: 8,
+  paddingBottom: 16,
+  flexDirection: 'row',          // add this
+  justifyContent: 'space-between', // add this
+  alignItems: 'flex-end',         // add this
+},
+staffListBtn: {
+  backgroundColor: '#2D2F8E',
+  paddingHorizontal: 14,
+  paddingVertical: 9,
+  borderRadius: 10,
+  shadowColor: '#2D2F8E',
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 0.3,
+  shadowRadius: 6,
+  elevation: 4,
+},
+staffListBtnText: {
+  color: '#FFFFFF',
+  fontSize: 12,
+  fontWeight: '700',
+  letterSpacing: 0.4,
+},
   // Cards Row
   cardsRow: {
     flexDirection: 'row',
