@@ -9,7 +9,12 @@ import {
   StatusBar,
   Modal,
   AppState,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
+import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../context/AuthContext';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   Camera,
   useCameraDevice,
@@ -122,6 +127,7 @@ const myLogs = [
 
 const FRAME_SIZE    = 240;
 const OVERLAY_COLOR = 'rgba(0,0,0,0.62)';
+const QR_VALID_SECS = 300; // must match admin QR generation
 
 // ─── Camera Permission Hook ───────────────────────────────────────────────────
 
@@ -180,15 +186,26 @@ const QRScannerView = ({ scanType, onScan, onClose }) => {
         const parsed       = JSON.parse(raw);
         const expectedType = isIn ? 'CHECK_IN' : 'CHECK_OUT';
 
-        if (parsed.shop === 'VishnutMobileShop' && parsed.type === expectedType) {
-          onScan({
-            success:   true,
-            sessionId: parsed.sessionId,
-            time:      new Date().toLocaleTimeString(),
-          });
-        } else {
+        // ── Validate shop code ─────────────────────────────────────
+        if (parsed.shop !== 'VishnutMobileShop' || parsed.type !== expectedType) {
           onScan({ success: false, reason: 'Wrong QR type or invalid shop code' });
+          return;
         }
+
+        // ── Validate expiry ───────────────────────────────────────
+        const generatedAt = new Date(parsed.timestamp).getTime();
+        const ageSeconds  = (Date.now() - generatedAt) / 1000;
+        if (ageSeconds > QR_VALID_SECS) {
+          onScan({ success: false, reason: `QR expired ${Math.round(ageSeconds - QR_VALID_SECS)}s ago. Ask manager to regenerate.` });
+          return;
+        }
+
+        onScan({
+          success:   true,
+          sessionId: parsed.sessionId,
+          type:      parsed.type,
+          time:      new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        });
       } catch {
         onScan({ success: false, reason: 'Unreadable QR — please try again' });
       }
@@ -374,24 +391,104 @@ const LogItem = ({ entry, isLast }) => (
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 const StaffAttendanceScreen = () => {
+  const { profile } = useAuth();
   const [scannerVisible, setScannerVisible] = useState(false);
   const [scanType,       setScanType]       = useState('in');
   const [resultVisible,  setResultVisible]  = useState(false);
   const [scanResult,     setScanResult]     = useState(null);
+  const [myLogs,         setMyLogs]         = useState([]);
+  const [loadingLogs,    setLoadingLogs]    = useState(true);
+  const [saving,         setSaving]         = useState(false);
 
-  const todayLog       = myLogs[0];
-  const checkedInToday  = todayLog?.checkIn  !== '—';
-  const checkedOutToday = todayLog?.checkOut !== '—';
+  // ── Fetch this staff member's attendance logs from Supabase ───────
+  const fetchMyLogs = async () => {
+    if (!profile?.id) return;
+    setLoadingLogs(true);
+    try {
+      const { data, error } = await supabase
+        .from('attendance_logs')
+        .select('id, name, role, time, status, check_type, created_at')
+        .eq('staff_id', profile.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      setMyLogs(data || []);
+    } catch (e) {
+      console.error('fetchMyLogs error:', e.message);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  useFocusEffect(useCallback(() => { fetchMyLogs(); }, [profile?.id]));
+
+  // Derive today's check-in / check-out from live logs
+  const todayStr     = new Date().toDateString();
+  const todayLogs    = myLogs.filter(l => new Date(l.created_at).toDateString() === todayStr);
+  const todayCheckIn  = todayLogs.find(l => l.check_type === 'CHECK_IN');
+  const todayCheckOut = todayLogs.find(l => l.check_type === 'CHECK_OUT');
+  const checkedInToday  = !!todayCheckIn;
+  const checkedOutToday = !!todayCheckOut;
+
+  // ── Save attendance log to Supabase ──────────────────────────────
+  const saveAttendanceLog = async (result, type) => {
+    if (!result.success || !profile) return;
+    setSaving(true);
+    try {
+      const now     = new Date();
+      const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+      // Determine auto-status: after 09:30 AM = LATE for check-in
+      let status = 'PRESENT';
+      if (type === 'in') {
+        const hours   = now.getHours();
+        const minutes = now.getMinutes();
+        if (hours > 9 || (hours === 9 && minutes > 30)) status = 'LATE';
+      }
+
+      const { error } = await supabase.from('attendance_logs').insert({
+        staff_id:   profile.id,
+        name:       profile.full_name || profile.username,
+        role:       profile.role,
+        check_type: type === 'in' ? 'CHECK_IN' : 'CHECK_OUT',
+        time:       timeStr,
+        status,
+        session_id: result.sessionId,
+      });
+
+      if (error) throw error;
+      await fetchMyLogs(); // refresh list
+    } catch (e) {
+      console.error('saveAttendanceLog error:', e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const openScanner = (type) => {
+    if (type === 'in' && checkedInToday) {
+      Alert.alert('Already Checked In', 'You have already recorded your check-in for today.');
+      return;
+    }
+    if (type === 'out' && checkedOutToday) {
+      Alert.alert('Already Checked Out', 'You have already recorded your check-out for today. Have a great evening!');
+      return;
+    }
+    if (type === 'out' && !checkedInToday) {
+      Alert.alert('Not Checked In', 'You must scan the Check-In QR before you can check out.');
+      return;
+    }
     setScanType(type);
     setScannerVisible(true);
   };
 
-  const handleScanResult = (result) => {
+  const handleScanResult = async (result) => {
     setScannerVisible(false);
     setScanResult(result);
     setResultVisible(true);
+    if (result.success) {
+      await saveAttendanceLog(result, scanType);
+    }
   };
 
   return (
@@ -448,7 +545,7 @@ const StaffAttendanceScreen = () => {
               </View>
               <Text style={styles.summaryLabel}>Check-In</Text>
               <Text style={[styles.summaryTime, { color: checkedInToday ? '#1E293B' : '#94A3B8' }]}>
-                {checkedInToday ? todayLog.checkIn : '—'}
+                {checkedInToday ? todayCheckIn.time : '—'}
               </Text>
             </View>
             <View style={styles.summaryDivider} />
@@ -458,7 +555,7 @@ const StaffAttendanceScreen = () => {
               </View>
               <Text style={styles.summaryLabel}>Check-Out</Text>
               <Text style={[styles.summaryTime, { color: checkedOutToday ? '#1E293B' : '#94A3B8' }]}>
-                {checkedOutToday ? todayLog.checkOut : '—'}
+                {checkedOutToday ? todayCheckOut.time : '—'}
               </Text>
             </View>
           </View>
@@ -482,7 +579,7 @@ const StaffAttendanceScreen = () => {
                 {checkedInToday ? 'Checked In ✓' : 'Scan Check-In QR'}
               </Text>
               <Text style={styles.scanSub}>
-                {checkedInToday ? `Recorded at ${todayLog.checkIn}` : "Point camera at manager's QR code"}
+                {checkedInToday ? `Recorded at ${todayCheckIn.time}` : "Point camera at manager's QR code"}
               </Text>
             </View>
             <View style={[styles.scanBadge, { backgroundColor: checkedInToday ? 'rgba(34,197,94,0.1)' : 'rgba(45,47,142,0.08)' }]}>
@@ -504,7 +601,7 @@ const StaffAttendanceScreen = () => {
                 {checkedOutToday ? 'Checked Out ✓' : 'Scan Check-Out QR'}
               </Text>
               <Text style={styles.scanSub}>
-                {checkedOutToday ? `Recorded at ${todayLog.checkOut}` : 'Scan when leaving for the day'}
+                {checkedOutToday ? `Recorded at ${todayCheckOut.time}` : 'Scan when leaving for the day'}
               </Text>
             </View>
             <View style={[styles.scanBadge, { backgroundColor: checkedOutToday ? 'rgba(239,68,68,0.1)' : 'rgba(100,116,139,0.08)' }]}>
@@ -513,12 +610,34 @@ const StaffAttendanceScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* ── My Logs — no download / no filter (admin-only) ── */}
+        {/* ── My Logs — live from Supabase ── */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>My Logs</Text>
-          {myLogs.map((entry, idx) => (
-            <LogItem key={entry.id} entry={entry} isLast={idx === myLogs.length - 1} />
-          ))}
+          {loadingLogs ? (
+            <ActivityIndicator color="#2D2F8E" style={{ paddingVertical: 20 }} />
+          ) : myLogs.length === 0 ? (
+            <Text style={{ color: '#94A3B8', textAlign: 'center', paddingVertical: 16, fontSize: 13 }}>
+              No attendance records yet
+            </Text>
+          ) : (
+            myLogs.map((entry, idx) => {
+              const dateStr = new Date(entry.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+              const isToday = new Date(entry.created_at).toDateString() === todayStr;
+              return (
+                <LogItem
+                  key={entry.id}
+                  entry={{
+                    id:       entry.id.slice(0, 8).toUpperCase(),
+                    date:     isToday ? 'Today' : dateStr,
+                    checkIn:  entry.check_type === 'CHECK_IN'  ? entry.time : '—',
+                    checkOut: entry.check_type === 'CHECK_OUT' ? entry.time : '—',
+                    status:   entry.status,
+                  }}
+                  isLast={idx === myLogs.length - 1}
+                />
+              );
+            })
+          )}
         </View>
 
       </ScrollView>

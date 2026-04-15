@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import React from "react";
 import {
   View,
@@ -10,8 +10,11 @@ import {
   StatusBar,
   Modal,
   Alert,
+  ActivityIndicator,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { useAuth } from '../../../context/AuthContext';
+import { supabase } from "../../../lib/supabase";
 
 import Svg2, {
   Path,
@@ -169,9 +172,79 @@ const recentSales = [
 
 export default function StaffHomePage() {
   const navigation = useNavigation();
-  const [activeNav, setActiveNav] = useState("home");
+  const { signOut, profile } = useAuth();
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
-  const shiftActive = true;
+
+  const [stats, setStats] = useState({ totalItemsSold: 0, recentSales: [] });
+  const [shiftActive, setShiftActive] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Parse user info
+  const displayName = profile?.full_name?.split(' ')[0] || profile?.username || "Staff";
+  let fullDisplayName = profile?.full_name || profile?.username || 'Staff Member';
+  const roleLabel = profile?.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1) : 'Staff Member';
+  const initials = fullDisplayName.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // 1. Shift status (Checked in but NOT checked out today)
+      if (profile?.id) {
+        const { data: logs } = await supabase
+          .from('attendance_logs')
+          .select('check_type')
+          .eq('staff_id', profile.id)
+          .gte('created_at', today.toISOString());
+        
+        const hasCheckIn  = logs?.some(l => l.check_type === 'CHECK_IN');
+        const hasCheckOut = logs?.some(l => l.check_type === 'CHECK_OUT');
+        setShiftActive(hasCheckIn && !hasCheckOut);
+      }
+
+      // 2. TODAY'S items sold BY THIS STAFF MEMBER ONLY
+      // Orders created by this staff (created_by = profile.id) since today midnight
+      let myItemsToday = 0;
+      let myRecentSales = [];
+
+      if (profile?.id) {
+        // Fetch today's orders placed by this staff
+        const { data: myOrders } = await supabase
+          .from('orders')
+          .select('id, total_items, total_payable, payment_method, created_at, customer_name')
+          .eq('created_by', profile.id)
+          .gte('created_at', today.toISOString())
+          .order('created_at', { ascending: false });
+
+        myItemsToday = (myOrders || []).reduce((sum, o) => sum + (o.total_items || 0), 0);
+
+        // Recent 4 orders by this staff (all time, not just today)
+        const { data: recentOrders } = await supabase
+          .from('orders')
+          .select('id, total_payable, payment_method, created_at, customer_name, total_items')
+          .eq('created_by', profile.id)
+          .order('created_at', { ascending: false })
+          .limit(4);
+
+        myRecentSales = recentOrders || [];
+      }
+
+      setStats({
+        totalItemsSold: myItemsToday,
+        recentSales: myRecentSales,
+      });
+    } catch (e) {
+      console.error('StaffDashboard load error:', e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useFocusEffect(useCallback(() => { loadData(); }, [profile?.id]));
+
+  const formatINR = (v) => '₹' + Math.round(v || 0).toLocaleString('en-IN');
 
   const handleLogout = () => {
     setProfileMenuVisible(false);
@@ -182,7 +255,7 @@ export default function StaffHomePage() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Logout', style: 'destructive',
-          onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Login' }] }),
+          onPress: () => signOut(),
         },
       ]
     );
@@ -207,11 +280,11 @@ export default function StaffHomePage() {
           <View style={styles.dropdownMenu}>
             <View style={styles.dropdownHeader}>
               <View style={styles.dropdownAvatar}>
-                <Text style={styles.dropdownAvatarText}>VM</Text>
+                <Text style={styles.dropdownAvatarText}>{initials}</Text>
               </View>
               <View>
-                <Text style={styles.dropdownName}>Vishnu Mobile Shop</Text>
-                <Text style={styles.dropdownRole}>Staff Member</Text>
+                <Text style={styles.dropdownName}>{fullDisplayName}</Text>
+                <Text style={styles.dropdownRole}>{roleLabel}</Text>
               </View>
             </View>
             <View style={styles.dropdownSep} />
@@ -262,8 +335,10 @@ export default function StaffHomePage() {
         {/* Greeting */}
         <View style={styles.greetingRow}>
           <View>
-            <Text style={styles.greetingName}>Hey, Ravi 👋</Text>
-            <Text style={styles.greetingDate}>Wednesday, 1 Apr 2026</Text>
+            <Text style={styles.greetingName}>Hey, {displayName} 👋</Text>
+            <Text style={styles.greetingDate}>
+               {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}
+            </Text>
           </View>
           <View style={[styles.shiftBadge, shiftActive ? styles.shiftBadgeActive : styles.shiftBadgeOff]}>
             <View style={[styles.shiftDot, shiftActive ? styles.shiftDotActive : styles.shiftDotOff]} />
@@ -273,35 +348,43 @@ export default function StaffHomePage() {
           </View>
         </View>
 
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
-          {/* Total Items Sold */}
-          <View style={styles.statCard}>
-            <View style={[styles.statIconBox, { backgroundColor: "rgba(45,47,142,0.1)" }]}>
-              <BoxIcon size={18} color="#2D2F8E" />
-            </View>
-            <Text style={styles.statLabel}>Total Items Sold</Text>
-            <Text style={styles.statValue}>128</Text>
-          </View>
+        {loading ? (
+           <ActivityIndicator size="large" color="#2D2F8E" style={{ paddingVertical: 40 }} />
+        ) : (
+          <>
+            {/* Stats Row */}
+            <View style={styles.statsRow}>
+              {/* Total Items Sold */}
+              <View style={styles.statCard}>
+                <View style={[styles.statIconBox, { backgroundColor: "rgba(45,47,142,0.1)" }]}>
+                  <BoxIcon size={18} color="#2D2F8E" />
+                </View>
+                <Text style={styles.statLabel}>Total Items Sold</Text>
+                <Text style={styles.statValue}>{stats.totalItemsSold}</Text>
+              </View>
 
-          {/* Shift Status */}
-          <View style={styles.statCard}>
-            <View style={[styles.statIconBox, { backgroundColor: "rgba(245,158,11,0.12)" }]}>
-              <ShiftIcon size={18} color="#f59e0b" />
+              {/* Shift Status */}
+              <View style={styles.statCard}>
+                <View style={[styles.statIconBox, { backgroundColor: "rgba(245,158,11,0.12)" }]}>
+                  <ShiftIcon size={18} color="#f59e0b" />
+                </View>
+                <Text style={styles.statLabel}>Shift Status</Text>
+                <Text style={[styles.statValue, { color: shiftActive ? "#22c55e" : "#ef4444" }]}>
+                  {shiftActive ? "Active" : "Inactive"}
+                </Text>
+              </View>
             </View>
-            <Text style={styles.statLabel}>Shift Status</Text>
-            <Text style={[styles.statValue, { color: shiftActive ? "#22c55e" : "#ef4444" }]}>
-              {shiftActive ? "Active" : "Inactive"}
-            </Text>
-          </View>
-        </View>
 
         {/* Quick Actions */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
 
           {/* Sell Product */}
-          <TouchableOpacity style={styles.actionCard} activeOpacity={0.85}>
+          <TouchableOpacity 
+             style={styles.actionCard} 
+             activeOpacity={0.85} 
+             onPress={() => navigation.navigate("POS")}
+          >
             <View style={[styles.actionIconBox, { backgroundColor: "#2D2F8E" }]}>
               <SellIcon size={26} color="#fff" />
             </View>
@@ -313,7 +396,11 @@ export default function StaffHomePage() {
           </TouchableOpacity>
 
           {/* Scan Attendance */}
-          <TouchableOpacity style={[styles.actionCard, styles.actionCardLast]} activeOpacity={0.85}>
+          <TouchableOpacity 
+            style={[styles.actionCard, styles.actionCardLast]} 
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate("Attendance")}
+          >
             <View style={[styles.actionIconBox, { backgroundColor: "#94A3B8" }]}>
               <FingerprintIcon size={26} color="#fff" />
             </View>
@@ -334,27 +421,33 @@ export default function StaffHomePage() {
             </TouchableOpacity>
           </View>
 
-          {recentSales.map((tx, idx) => (
-            <View
-              key={tx.id}
-              style={[
-                styles.txRow,
-                idx === recentSales.length - 1 && { borderBottomWidth: 0 },
-              ]}
-            >
-              <View style={[styles.txIconBox, { backgroundColor: tx.iconBg }]}>
-                <tx.IconComp size={20} color={tx.iconColor} />
+          {stats.recentSales.length === 0 ? (
+            <Text style={{ textAlign: 'center', color: '#888', marginVertical: 20 }}>No recent sales</Text>
+          ) : (
+            stats.recentSales.map((tx, idx) => (
+              <View
+                key={tx.id}
+                style={[
+                  styles.txRow,
+                  idx === stats.recentSales.length - 1 && { borderBottomWidth: 0 },
+                ]}
+              >
+                <View style={[styles.txIconBox, { backgroundColor: "rgba(45,47,142,0.1)" }]}>
+                  <BoxIcon size={20} color="#2D2F8E" />
+                </View>
+                <View style={styles.txInfo}>
+                  <Text style={styles.txProduct}>{tx.customer_name || 'Walk-in Customer'}</Text>
+                  <Text style={styles.txMeta}>
+                    {new Date(tx.created_at).toLocaleTimeString('en-IN', {hour: '2-digit', minute:'2-digit'})} • {tx.total_items} items • {tx.payment_method.toUpperCase()}
+                  </Text>
+                </View>
+                <Text style={styles.txAmount}>{formatINR(tx.total_payable)}</Text>
               </View>
-              <View style={styles.txInfo}>
-                <Text style={styles.txProduct}>{tx.product}</Text>
-                <Text style={styles.txMeta}>
-                  {tx.time} • Transaction {tx.id}
-                </Text>
-              </View>
-              <Text style={styles.txAmount}>{tx.amount}</Text>
-            </View>
-          ))}
+            ))
+          )}
         </View>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
