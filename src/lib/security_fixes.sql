@@ -66,9 +66,37 @@ CREATE POLICY "staff_admin_only" ON staff
   FOR ALL USING ( (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin' );
 
 -- Attendance Logs
-DROP POLICY IF EXISTS "attendance_admin_only" ON attendance_logs;
-CREATE POLICY "attendance_admin_only" ON attendance_logs
-  FOR ALL USING ( (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin' );
+-- IMPORTANT:
+-- Staff must be able to INSERT their own attendance scans.
+-- Admin must be able to view all logs.
+DROP POLICY IF EXISTS "attendance_admin_only"             ON attendance_logs;
+DROP POLICY IF EXISTS "attendance_authenticated"          ON attendance_logs;
+DROP POLICY IF EXISTS "attendance_insert_own"             ON attendance_logs;
+DROP POLICY IF EXISTS "attendance_select_own_or_admin"    ON attendance_logs;
+DROP POLICY IF EXISTS "attendance_update_admin_only"      ON attendance_logs;
+DROP POLICY IF EXISTS "attendance_delete_admin_only"      ON attendance_logs;
+
+-- Staff can insert only for themselves
+CREATE POLICY "attendance_insert_own" ON attendance_logs
+  FOR INSERT
+  WITH CHECK (auth.uid() = staff_id);
+
+-- Staff can read only their own logs; admin can read all
+CREATE POLICY "attendance_select_own_or_admin" ON attendance_logs
+  FOR SELECT
+  USING (
+    auth.uid() = staff_id
+    OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+  );
+
+-- Only admin can update/delete attendance logs (avoid tampering)
+CREATE POLICY "attendance_update_admin_only" ON attendance_logs
+  FOR UPDATE
+  USING ( (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin' );
+
+CREATE POLICY "attendance_delete_admin_only" ON attendance_logs
+  FOR DELETE
+  USING ( (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin' );
 
 -- Orders
 DROP POLICY IF EXISTS "orders_read" ON orders;

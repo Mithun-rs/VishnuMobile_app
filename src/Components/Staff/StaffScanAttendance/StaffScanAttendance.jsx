@@ -15,6 +15,7 @@ import {
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { useFocusEffect } from '@react-navigation/native';
+import { LATE_CHECKIN_HOUR, LATE_CHECKIN_MINUTE, WORKING_DAYS_PER_MONTH, WORKDAY_START_HOUR, WORKDAY_END_HOUR } from '../../../constants';
 import {
   Camera,
   useCameraDevice,
@@ -438,12 +439,31 @@ const StaffAttendanceScreen = () => {
       const now     = new Date();
       const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 
-      // Determine auto-status: after 09:30 AM = LATE for check-in
+      // Determine auto-status: after 09:00 AM = LATE for check-in
       let status = 'PRESENT';
       if (type === 'in') {
         const hours   = now.getHours();
         const minutes = now.getMinutes();
-        if (hours > 9 || (hours === 9 && minutes > 30)) status = 'LATE';
+        if (hours > LATE_CHECKIN_HOUR || (hours === LATE_CHECKIN_HOUR && minutes > LATE_CHECKIN_MINUTE)) status = 'LATE';
+      }
+
+      // Payroll (late deduction) — based on monthly salary split into per-day, then per-minute
+      // Workday assumed: 09:00 → 21:00 (12 hrs). Late minutes = minutes after 09:00 for CHECK_IN only.
+      const baseMonthly = Number(profile?.salary) || 0;
+      const perDay = baseMonthly > 0 ? baseMonthly / WORKING_DAYS_PER_MONTH : 0;
+      const workdayMinutes = Math.max(1, (WORKDAY_END_HOUR - WORKDAY_START_HOUR) * 60);
+      const perMinute = perDay > 0 ? perDay / workdayMinutes : 0;
+
+      let lateMinutes = 0;
+      let deductionAmount = 0;
+      let payableAmount = perDay;
+
+      if (type === 'in' && perMinute > 0) {
+        const expected = new Date(now);
+        expected.setHours(WORKDAY_START_HOUR, 0, 0, 0);
+        lateMinutes = Math.max(0, Math.floor((now.getTime() - expected.getTime()) / 60000));
+        deductionAmount = lateMinutes * perMinute;
+        payableAmount = Math.max(0, perDay - deductionAmount);
       }
 
       const { error } = await supabase.from('attendance_logs').insert({
@@ -454,6 +474,9 @@ const StaffAttendanceScreen = () => {
         time:       timeStr,
         status,
         session_id: result.sessionId,
+        late_minutes: type === 'in' ? lateMinutes : 0,
+        deduction_amount: type === 'in' ? deductionAmount : 0,
+        payable_amount: type === 'in' ? payableAmount : null,
       });
 
       if (error) throw error;
@@ -470,16 +493,35 @@ const StaffAttendanceScreen = () => {
       Alert.alert('Already Checked In', 'You have already recorded your check-in for today.');
       return;
     }
-    if (type === 'out' && checkedOutToday) {
+    setScanType(type);
+    setScannerVisible(true);
+  };
+
+  const handleDirectCheckOut = () => {
+    if (checkedOutToday) {
       Alert.alert('Already Checked Out', 'You have already recorded your check-out for today. Have a great evening!');
       return;
     }
-    if (type === 'out' && !checkedInToday) {
-      Alert.alert('Not Checked In', 'You must scan the Check-In QR before you can check out.');
+    if (!checkedInToday) {
+      Alert.alert('Not Checked In', 'You must be checked in before you can check out.');
       return;
     }
-    setScanType(type);
-    setScannerVisible(true);
+
+    Alert.alert(
+      'Confirm Check-Out',
+      'Are you sure you want to check out and end your day? You cannot check in again today.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Check Out', 
+          style: 'destructive',
+          onPress: async () => {
+            await saveAttendanceLog({ success: true, sessionId: 'DIRECT_OUT' }, 'out');
+            Alert.alert('Checked Out', 'Your check-out has been recorded. Have a great evening!');
+          }
+        }
+      ]
+    );
   };
 
   const handleScanResult = async (result) => {
@@ -590,18 +632,18 @@ const StaffAttendanceScreen = () => {
           {/* Check Out */}
           <TouchableOpacity
             style={[styles.scanCard, styles.scanCardLast, checkedOutToday && styles.scanCardDone]}
-            onPress={() => openScanner('out')}
+            onPress={handleDirectCheckOut}
             activeOpacity={0.85}
           >
             <View style={[styles.scanIconBox, { backgroundColor: checkedOutToday ? 'rgba(239,68,68,0.12)' : '#64748B' }]}>
-              <ScanIcon size={24} color={checkedOutToday ? '#ef4444' : '#fff'} />
+              <LogoutIcon size={24} color={checkedOutToday ? '#ef4444' : '#fff'} />
             </View>
             <View style={styles.scanInfo}>
               <Text style={styles.scanTitle}>
-                {checkedOutToday ? 'Checked Out ✓' : 'Scan Check-Out QR'}
+                {checkedOutToday ? 'Checked Out ✓' : 'Click to Check Out'}
               </Text>
               <Text style={styles.scanSub}>
-                {checkedOutToday ? `Recorded at ${todayCheckOut.time}` : 'Scan when leaving for the day'}
+                {checkedOutToday ? `Recorded at ${todayCheckOut.time}` : 'Click here when leaving for the day'}
               </Text>
             </View>
             <View style={[styles.scanBadge, { backgroundColor: checkedOutToday ? 'rgba(239,68,68,0.1)' : 'rgba(100,116,139,0.08)' }]}>

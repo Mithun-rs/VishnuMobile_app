@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   FlatList,
   Image,
+  Alert,
 } from "react-native";
 import BackArrow from '../../../../assets/back-arrow.svg';
 import DeleteIcon from '../../../../assets/delete.svg'
@@ -47,8 +48,17 @@ export default function CartScreen() {
 
   // Increase qty by 1
   const increase = async (id) => {
-    const updated = cart.map((item) =>
-      item.id === id ? { ...item, qty: item.qty + 1 } : item
+    const item = cart.find(i => i.id === id);
+    if (!item) return;
+
+    const availableStock = item.stockQty ?? 0;
+    if (item.qty >= availableStock) {
+      Alert.alert('Stock Limit', `Only ${availableStock} items available in stock.`);
+      return;
+    }
+
+    const updated = cart.map((cartItem) =>
+      cartItem.id === id ? { ...cartItem, qty: cartItem.qty + 1 } : cartItem
     );
     await saveCart(updated);
   };

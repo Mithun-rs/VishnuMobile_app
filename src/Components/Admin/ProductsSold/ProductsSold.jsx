@@ -1,6 +1,8 @@
-// src/Components/Admin/ProductsSold/ProductsSold.jsx
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import {
+  View, Text, StyleSheet, SafeAreaView,
+  TouchableOpacity, ScrollView, ActivityIndicator, Image
+} from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../../lib/supabase';
 import Svg, { Polyline, Line, Rect } from 'react-native-svg';
@@ -13,8 +15,8 @@ const BackIcon = ({ size = 24, color = "#2D2F8E" }) => (
 
 const SmartphoneIcon = ({ size = 24, color = "#2D2F8E" }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Rect x="5" y="2" width="14" height="20" rx="2" ry="2" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    <Line x1="12" y1="18" x2="12.01" y2="18" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Rect x="5" y="2" width="14" height="20" rx="2" ry="2" stroke={color} strokeWidth="2" />
+    <Line x1="12" y1="18" x2="12.01" y2="18" stroke={color} strokeWidth="2" strokeLinecap="round" />
   </Svg>
 );
 
@@ -22,86 +24,63 @@ export default function ProductsSoldScreen() {
   const navigation = useNavigation();
   const [tab, setTab] = useState('TODAY');
   const [loading, setLoading] = useState(true);
-  const [rawOrders, setRawOrders] = useState([]);
-  const [rawItems, setRawItems] = useState([]);
-  const [rawProducts, setRawProducts] = useState([]);
+  const [soldList, setSoldList] = useState([]);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      // Get all orders from the last month up to now to cover all tabs
-      let monthAgo = new Date();
-      monthAgo.setMonth(monthAgo.getMonth() - 1);
-      monthAgo.setHours(0,0,0,0);
+      const now = new Date();
+      let startDate = new Date();
 
-      const [ordersRes, itemsRes, productsRes] = await Promise.all([
-        supabase.from('orders').select('id, created_at').gte('created_at', monthAgo.toISOString()),
-        supabase.from('order_items').select('order_id, product_id, qty'),
-        supabase.from('products').select('id, name, storage, color')
-      ]);
+      if (tab === 'TODAY') {
+        startDate.setHours(0, 0, 0, 0);
+      } else if (tab === 'WEEKLY') {
+        startDate.setDate(now.getDate() - 6);
+        startDate.setHours(0, 0, 0, 0);
+      } else if (tab === 'MONTHLY') {
+        startDate.setMonth(now.getMonth() - 1);
+        startDate.setHours(0, 0, 0, 0);
+      }
 
-      setRawOrders(ordersRes.data || []);
-      setRawItems(itemsRes.data || []);
-      setRawProducts(productsRes.data || []);
-    } catch(err) {
-      console.error(err);
+      const { data, error } = await supabase
+        .from('sold_products')
+        .select('*')
+        .gte('sold_at', startDate.toISOString())
+        .order('sold_at', { ascending: false });
+
+      if (error) throw error;
+      setSoldList(data || []);
+    } catch (err) {
+      console.error('ProductsSoldScreen error:', err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  useFocusEffect(useCallback(() => { loadData(); }, []));
+  useFocusEffect(useCallback(() => { loadData(); }, [tab]));
 
-  const { productsList } = React.useMemo(() => {
-    if (!rawOrders.length || !rawItems.length || !rawProducts.length) return { productsList: [] };
-
-    const now = new Date();
-    let startDate = new Date();
-    
-    if (tab === 'TODAY') {
-      startDate.setHours(0,0,0,0);
-    } else if (tab === 'WEEKLY') {
-      startDate.setDate(now.getDate() - 6);
-      startDate.setHours(0,0,0,0);
-    } else if (tab === 'MONTHLY') {
-      startDate.setMonth(now.getMonth() - 1);
-      startDate.setHours(0,0,0,0);
-    }
-
-    const validOrderIds = new Set(rawOrders.filter(o => new Date(o.created_at) >= startDate).map(o => o.id));
-    
-    const qtyMap = {};
-    rawItems.filter(i => validOrderIds.has(i.order_id)).forEach(i => {
-      qtyMap[i.product_id] = (qtyMap[i.product_id] || 0) + (i.qty || 0);
-    });
-
-    const list = Object.keys(qtyMap).map(pId => {
-      const prod = rawProducts.find(p => p.id === pId);
-      return {
-        id: pId,
-        name: prod?.name || 'Unknown Product',
-        sub: (prod?.storage || prod?.color) ? `${prod?.storage || ''} ${prod?.color || ''}`.trim() : 'Standard Edition',
-        sold: qtyMap[pId]
-      };
-    }).sort((a,b) => b.sold - a.sold);
-
-    return { productsList: list };
-  }, [rawOrders, rawItems, rawProducts, tab]);
+  const formatINR = (v) => '₹' + Number(v || 0).toLocaleString('en-IN');
+  const formatDate = (d) => new Date(d).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
 
   return (
     <SafeAreaView style={styles.safe}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
           <BackIcon size={24} color="#2D2F8E" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Products Sold</Text>
-        <View style={{width: 36}} />
+        <View style={{ width: 36 }} />
       </View>
 
+      {/* Tabs */}
       <View style={styles.tabContainer}>
         {['TODAY', 'WEEKLY', 'MONTHLY'].map((t) => (
-          <TouchableOpacity 
-            key={t} 
+          <TouchableOpacity
+            key={t}
             style={[styles.tab, tab === t && styles.tabActive]}
             onPress={() => setTab(t)}
           >
@@ -112,27 +91,66 @@ export default function ProductsSoldScreen() {
         ))}
       </View>
 
+      {/* Summary pill */}
+      {!loading && soldList.length > 0 && (
+        <View style={styles.summaryPill}>
+          <Text style={styles.summaryText}>
+            {soldList.length} product{soldList.length > 1 ? 's' : ''} sold ·{' '}
+            Total: {formatINR(soldList.reduce((s, i) => s + Number(i.price || 0), 0))}
+          </Text>
+        </View>
+      )}
+
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {loading ? (
-          <ActivityIndicator size="large" color="#2D2F8E" style={{marginTop: 40}} />
-        ) : productsList.length === 0 ? (
-          <Text style={{textAlign: 'center', color: '#94A3B8', marginTop: 40}}>No products sold in this period.</Text>
+          <ActivityIndicator size="large" color="#2D2F8E" style={{ marginTop: 40 }} />
+        ) : soldList.length === 0 ? (
+          <View style={styles.empty}>
+            <Text style={styles.emptyIcon}>📦</Text>
+            <Text style={styles.emptyText}>No products sold in this period.</Text>
+          </View>
         ) : (
-          productsList.map((p, i) => (
-            <View key={p.id} style={styles.productCard}>
-              <View style={styles.rankBox}>
-                <Text style={styles.rankText}>#{i + 1}</Text>
+          soldList.map((item, i) => (
+            <View key={item.id} style={styles.card}>
+              {/* Image or placeholder */}
+              {item.image ? (
+                <Image source={{ uri: item.image }} style={styles.cardImg} resizeMode="cover" />
+              ) : (
+                <View style={[styles.cardImg, styles.cardImgPlaceholder]}>
+                  <SmartphoneIcon size={26} color="#7986cb" />
+                </View>
+              )}
+
+              {/* Info */}
+              <View style={styles.cardInfo}>
+                <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
+                <Text style={styles.cardSub}>
+                  IMEI: {item.imei || item.sku || '—'}
+                </Text>
+                <Text style={styles.cardSub}>
+                  {item.color ? `${item.color} · ` : ''}{item.category || ''}
+                </Text>
+                <Text style={styles.cardDate}>{formatDate(item.sold_at)}</Text>
               </View>
-              <View style={styles.productIconBox}>
-                <SmartphoneIcon size={26} color="#7986cb" />
-              </View>
-              <View style={styles.productInfo}>
-                <Text style={styles.productName} numberOfLines={1}>{p.name}</Text>
-                <Text style={styles.productSub}>{p.sub}</Text>
-              </View>
-              <View style={styles.soldBox}>
-                <Text style={styles.soldNumber}>{p.sold}</Text>
-                <Text style={styles.soldUnit}>Units</Text>
+
+              {/* Price + customer */}
+              <View style={styles.cardRight}>
+               <Text style={styles.cardCustomer} numberOfLines={1}>
+  {item.customer_name || 'Walk-in'}
+</Text>
+{item.sold_by_name ? (
+  <Text style={styles.cardSoldBy} numberOfLines={1}>
+     🧑‍💼 {item.sold_by_name}
+  </Text>
+) : null}
+                <View style={[styles.payBadge,
+                  item.payment_method === 'cash' && styles.payBadgeCash,
+                  item.payment_method === 'card' && styles.payBadgeCard,
+                ]}>
+                  <Text style={styles.payBadgeText}>
+                    {item.payment_method?.toUpperCase() || 'UPI'}
+                  </Text>
+                </View>
               </View>
             </View>
           ))
@@ -146,62 +164,63 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8F9FF' },
   header: {
     backgroundColor: '#fff',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 14,
+    flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between',
     elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
   },
   headerTitle: { fontSize: 18, fontWeight: '800', color: '#2D2F8E' },
   backBtn: {
-    width: 36, height: 36,
-    borderRadius: 18,
+    width: 36, height: 36, borderRadius: 18,
     backgroundColor: '#F1F5F9',
-    alignItems: 'center', justifyContent: 'center'
+    alignItems: 'center', justifyContent: 'center',
   },
   tabContainer: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 8,
-    backgroundColor: '#fff'
+    flexDirection: 'row', padding: 16, gap: 8, backgroundColor: '#fff',
   },
   tab: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center'
+    flex: 1, paddingVertical: 10, borderRadius: 8,
+    backgroundColor: '#F1F5F9', alignItems: 'center',
   },
   tabActive: { backgroundColor: '#2D2F8E' },
   tabText: { fontSize: 13, fontWeight: '700', color: '#64748B' },
   tabTextActive: { color: '#fff' },
+  summaryPill: {
+    marginHorizontal: 16, marginTop: 12,
+    backgroundColor: '#EEF0FF', borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 8,
+  },
+  summaryText: { fontSize: 13, fontWeight: '700', color: '#2D2F8E', textAlign: 'center' },
   body: { padding: 16, paddingBottom: 40 },
-  productCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 14,
-    borderRadius: 16,
-    marginBottom: 12,
-    elevation: 1,
-    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8
+  empty: { alignItems: 'center', paddingTop: 60 },
+  emptyIcon: { fontSize: 48, marginBottom: 12 },
+  emptyText: { color: '#94A3B8', fontSize: 14, fontWeight: '600' },
+
+  card: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fff', borderRadius: 16,
+    marginBottom: 12, padding: 12,
+    elevation: 2,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8,
   },
-  rankBox: { width: 28 },
-  rankText: { fontSize: 14, fontWeight: '800', color: '#94A3B8' },
-  productIconBox: {
-    width: 48, height: 48,
-    backgroundColor: '#EEF0FF',
-    borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
-    marginRight: 12
+  cardImg: {
+    width: 60, height: 60, borderRadius: 12,
+    backgroundColor: '#EEF0FF', marginRight: 12,
   },
-  productInfo: { flex: 1 },
-  productName: { fontSize: 14, fontWeight: '700', color: '#1E293B', marginBottom: 2 },
-  productSub: { fontSize: 11, color: '#64748B' },
-  soldBox: { alignItems: 'flex-end', marginLeft: 12 },
-  soldNumber: { fontSize: 18, fontWeight: '800', color: '#22c55e' },
-  soldUnit: { fontSize: 10, fontWeight: '600', color: '#64748B' }
+  cardImgPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  cardInfo: { flex: 1 },
+  cardName: { fontSize: 13, fontWeight: '800', color: '#1E293B', marginBottom: 2 },
+  cardSub: { fontSize: 11, color: '#64748B', marginBottom: 1 },
+  cardDate: { fontSize: 10, color: '#94A3B8', marginTop: 3 },
+  cardRight: { alignItems: 'flex-end', marginLeft: 8 },
+  cardPrice: { fontSize: 15, fontWeight: '900', color: '#2D2F8E', marginBottom: 2 },
+  cardCustomer: { fontSize: 10, color: '#64748B', marginBottom: 4, maxWidth: 80 },
+  cardSoldBy: { fontSize: 10, color: '#2D2F8E', fontWeight: '700', marginBottom: 4, maxWidth: 80 },
+  payBadge: {
+    backgroundColor: '#EEF0FF', borderRadius: 6,
+    paddingHorizontal: 6, paddingVertical: 2,
+  },
+  payBadgeCash: { backgroundColor: '#DCFCE7' },
+  payBadgeCard: { backgroundColor: '#FEF9C3' },
+  payBadgeText: { fontSize: 9, fontWeight: '800', color: '#2D2F8E' },
 });

@@ -7,10 +7,10 @@ import {
   SafeAreaView,
   ScrollView,
   TextInput,
-  Image,
   Alert,
   ActivityIndicator,
 } from "react-native";
+import { CachedImage } from "../../../../lib/imageUtils";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../../../lib/supabase";
@@ -19,12 +19,7 @@ import Cart from '../../../../assets/cart.svg';
 import BackArrow from '../../../../assets/back-arrow.svg';
 import Search from '../../../../assets/search-icon.svg';
 
-// Derive status color from status string
-const statusColor = (status) => {
-  if (status === 'IN STOCK')     return '#3d5af1';
-  if (status === 'LOW STOCK')    return '#ef4444';
-  return '#999';
-};
+
 
 export default function ProductsScreen() {
   const navigation = useNavigation();
@@ -76,8 +71,11 @@ export default function ProductsScreen() {
       const data = await AsyncStorage.getItem('cart');
       const cart = data ? JSON.parse(data) : [];
       const existing = cart.findIndex((i) => i.id === product.id);
+      
       if (existing >= 0) { cart[existing].qty += 1; }
       else { cart.push({ ...product, qty: 1 }); }
+
+      
       await AsyncStorage.setItem('cart', JSON.stringify(cart));
       setCartCount(cart.reduce((sum, item) => sum + item.qty, 0));
       setAddedIds((prev) => ({ ...prev, [product.id]: true }));
@@ -136,7 +134,7 @@ export default function ProductsScreen() {
           <Text style={styles.headerTitle}>Vishnu Shop</Text>
         </View>
         <TouchableOpacity style={styles.cartBtn} onPress={() => navigation.navigate('Cart')}>
-          <Cart width={24} height={24} fill="#1a2e6c" stroke="#1a2e6c" />
+          <Cart width={24} height={24} fill="#ffffffff" stroke="#1a2e6c" />
           {cartCount > 0 && (
             <View style={styles.cartBadge}>
               <Text style={styles.cartBadgeText}>{cartCount > 99 ? '99+' : cartCount}</Text>
@@ -203,19 +201,16 @@ export default function ProductsScreen() {
                   onLongPress={() => handleDelete(product)}
                   delayLongPress={400}
                 >
-                  {/* Status badge */}
-                  <View style={[styles.statusBadge, { backgroundColor: statusColor(product.status) }]}>
-                    <Text style={styles.statusText}>{product.status}</Text>
-                  </View>
 
                   {/* Product image */}
-                  {product.image ? (
-                    <Image source={{ uri: product.image }} style={styles.productImage} resizeMode="cover" />
-                  ) : (
-                    <View style={[styles.productImage, styles.noImage]}>
-                      <Text style={styles.noImageIcon}>🖼️</Text>
-                    </View>
-                  )}
+                  <CachedImage
+                    uri={product.image}
+                    style={styles.productImage}
+                    resizeMode="contain"
+                    thumbWidth={300}
+                    thumbHeight={300}
+                    fallback={<Text style={styles.noImageIcon}>🖼️</Text>}
+                  />
 
                   {/* Info */}
                   <View style={styles.cardBody}>
@@ -305,11 +300,7 @@ const styles = StyleSheet.create({
     width: '47%', backgroundColor: '#fff',
     borderRadius: 14, overflow: 'hidden', elevation: 3, position: 'relative',
   },
-  statusBadge: {
-    position: 'absolute', top: 8, left: 8,
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, zIndex: 1,
-  },
-  statusText: { color: '#fff', fontSize: 8, fontWeight: '800', letterSpacing: 0.5 },
+
   productImage: { width: '100%', height: 130, backgroundColor: '#1a1a2e' },
   noImage: { alignItems: 'center', justifyContent: 'center' },
   noImageIcon: { fontSize: 36 },

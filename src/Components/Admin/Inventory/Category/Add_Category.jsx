@@ -197,6 +197,7 @@ const styles = StyleSheet.create({
   profile: {
     width: 36, height: 36, backgroundColor: '#2D2F8E',
     borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+    opacity:0
   },
   scrollContent: { paddingBottom: 40 },
   section: { paddingHorizontal: 16, marginTop: 10, marginBottom: 16 },

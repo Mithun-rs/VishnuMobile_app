@@ -59,6 +59,33 @@ const RegisterModal = ({ visible, onClose }) => {
 
       if (error) throw error;
 
+      // 2. Create a pending approval request for admin
+      // This is what powers the Admin "Pending Login Requests" panel.
+      // Note: depending on Supabase email confirmation settings, `data.user` may be null.
+      let userId = data?.user?.id;
+      if (!userId) {
+        const { data: u } = await supabase.auth.getUser();
+        userId = u?.user?.id || null;
+      }
+
+      if (userId) {
+        const { error: reqErr } = await supabase
+          .from('pending_login_requests')
+          .insert({
+            staff_id: userId,
+            username: trimmedUser,
+            full_name: trimmedFull,
+            status: 'pending',
+          });
+
+        if (reqErr) {
+          // Don't fail registration if request insert fails; show a helpful message.
+          console.warn('Pending request insert error:', reqErr.message);
+        }
+      } else {
+        console.warn('Could not create pending request: missing user id after signup');
+      }
+
       // 2. Success message
       Alert.alert(
         '🎉 Registration Sent',

@@ -1,4 +1,5 @@
 import React from 'react';
+import { View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 // Screens — Admin tabs
@@ -21,6 +22,26 @@ import StaffIcon from '../../assets/staff.svg';
 
 const Tab = createBottomTabNavigator();
 
+const ACTIVE_COLOR = '#2D2F8E';
+const INACTIVE_COLOR = '#8fa0b8';
+const ACTIVE_BG = '#E8E8F5'; // light blue-purple background
+
+// Reusable wrapper for tab icons with background highlight
+const TabIcon = ({ focused, children }) => (
+  <View
+    style={{
+      backgroundColor: focused ? ACTIVE_BG : 'transparent',
+      borderRadius: 16,
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}
+  >
+    {children}
+  </View>
+);
+
 // ─── Admin Tabs (all 5) ───────────────────────────────────────────────────────
 export function AdminTabs() {
   return (
@@ -28,8 +49,8 @@ export function AdminTabs() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: { height: 68 },
-        tabBarActiveTintColor: '#2D2F8E',
-        tabBarInactiveTintColor: '#8fa0b8',
+        tabBarActiveTintColor: ACTIVE_COLOR,
+        tabBarInactiveTintColor: INACTIVE_COLOR,
       }}
     >
       <Tab.Screen
@@ -37,11 +58,12 @@ export function AdminTabs() {
         component={HomeScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <HomeIcon
-              width={22} height={22}
-              fill={focused ? '#2D2F8E' : '#8fa0b8'}
-              stroke={focused ? '#2D2F8E' : '#8fa0b8'}
-            />
+            <TabIcon focused={focused}>
+              <HomeIcon
+                width={22} height={22}
+                fill={focused ? ACTIVE_COLOR : INACTIVE_COLOR}
+              />
+            </TabIcon>
           ),
         }}
       />
@@ -50,11 +72,12 @@ export function AdminTabs() {
         component={CategoryScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <CategoryIcon
-              width={22} height={22}
-              fill={focused ? '#2D2F8E' : '#8fa0b8'}
-              stroke={focused ? '#2D2F8E' : '#8fa0b8'}
-            />
+            <TabIcon focused={focused}>
+              <CategoryIcon
+                width={22} height={22}
+                fill={focused ? ACTIVE_COLOR : INACTIVE_COLOR}
+              />
+            </TabIcon>
           ),
         }}
       />
@@ -63,11 +86,12 @@ export function AdminTabs() {
         component={PosScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <PosIcon
-              width={22} height={22}
-              fill={focused ? '#2D2F8E' : '#8fa0b8'}
-              stroke={focused ? '#2D2F8E' : '#8fa0b8'}
-            />
+            <TabIcon focused={focused}>
+              <PosIcon
+                width={22} height={22}
+                fill={focused ? ACTIVE_COLOR : INACTIVE_COLOR}
+              />
+            </TabIcon>
           ),
         }}
       />
@@ -76,11 +100,12 @@ export function AdminTabs() {
         component={StaffListScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <StaffIcon
-              width={22} height={22}
-              fill={focused ? '#2D2F8E' : '#8fa0b8'}
-              stroke={focused ? '#2D2F8E' : '#8fa0b8'}
-            />
+            <TabIcon focused={focused}>
+              <StaffIcon
+                width={22} height={22}
+                fill={focused ? ACTIVE_COLOR : INACTIVE_COLOR}
+              />
+            </TabIcon>
           ),
         }}
       />
@@ -90,11 +115,12 @@ export function AdminTabs() {
         options={{
           tabBarLabel: 'Report',
           tabBarIcon: ({ focused }) => (
-            <ReportIcon
-              width={22} height={22}
-              fill={focused ? '#2D2F8E' : '#8fa0b8'}
-              stroke={focused ? '#2D2F8E' : '#8fa0b8'}
-            />
+            <TabIcon focused={focused}>
+              <ReportIcon
+                width={22} height={22}
+                fill={focused ? ACTIVE_COLOR : INACTIVE_COLOR}
+              />
+            </TabIcon>
           ),
         }}
       />
@@ -109,8 +135,8 @@ export function StaffTabs() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: { height: 68 },
-        tabBarActiveTintColor: '#2D2F8E',
-        tabBarInactiveTintColor: '#8fa0b8',
+        tabBarActiveTintColor: ACTIVE_COLOR,
+        tabBarInactiveTintColor: INACTIVE_COLOR,
       }}
     >
       <Tab.Screen
@@ -119,11 +145,12 @@ export function StaffTabs() {
         options={{
           tabBarLabel: 'Home',
           tabBarIcon: ({ focused }) => (
-            <HomeIcon
-              width={22} height={22}
-              fill={focused ? '#2D2F8E' : '#8fa0b8'}
-              stroke={focused ? '#2D2F8E' : '#8fa0b8'}
-            />
+            <TabIcon focused={focused}>
+              <HomeIcon
+                width={22} height={22}
+                fill={focused ? ACTIVE_COLOR : INACTIVE_COLOR}
+              />
+            </TabIcon>
           ),
         }}
       />
@@ -132,11 +159,12 @@ export function StaffTabs() {
         component={PosScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <PosIcon
-              width={22} height={22}
-              fill={focused ? '#2D2F8E' : '#8fa0b8'}
-              stroke={focused ? '#2D2F8E' : '#8fa0b8'}
-            />
+            <TabIcon focused={focused}>
+              <PosIcon
+                width={22} height={22}
+                fill={focused ? ACTIVE_COLOR : INACTIVE_COLOR}
+              />
+            </TabIcon>
           ),
         }}
       />
@@ -146,11 +174,12 @@ export function StaffTabs() {
         options={{
           tabBarLabel: 'Attendance',
           tabBarIcon: ({ focused }) => (
-            <StaffIcon
-              width={22} height={22}
-              fill={focused ? '#2D2F8E' : '#8fa0b8'}
-              stroke={focused ? '#2D2F8E' : '#8fa0b8'}
-            />
+            <TabIcon focused={focused}>
+              <StaffIcon
+                width={22} height={22}
+                fill={focused ? ACTIVE_COLOR : INACTIVE_COLOR}
+              />
+            </TabIcon>
           ),
         }}
       />

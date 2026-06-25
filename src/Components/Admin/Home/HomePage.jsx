@@ -1,4 +1,9 @@
 import { useState, useCallback } from "react";
+import {
+  ESTIMATED_PROFIT_MARGIN,
+  DASHBOARD_LOW_STOCK_LIMIT,
+  RECENT_ORDERS_LIMIT,
+} from '../../../constants';
 import React from "react";
 import {
   View,
@@ -13,13 +18,18 @@ import {
   ActivityIndicator,
   Dimensions,
 } from "react-native";
+import {Platform } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
+import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 
 // SVG Icons as React Native SVG components
 import Svg2, { Path, Circle, Rect, Polyline, Line, Polygon, Text as SvgText } from "react-native-svg";
-
+// Outside component — module level cache
+let _dashboardCache = null;
+let _cacheTime = 0;
+const CACHE_TTL = 60000; // 1 minute
 // Icon components
 const MenuIcon = ({ size = 20, color = "#fff" }) => (
   <Svg2 width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -183,7 +193,8 @@ const C = {
 };
 
 export default function Dashboard() {
-  const navigation = useNavigation();
+  
+  const navigation = useNavigation();const [soldHistory, setSoldHistory] = useState([]);
   const { signOut, profile } = useAuth();
   const [tab, setTab] = useState("WEEKLY");
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
@@ -196,103 +207,244 @@ export default function Dashboard() {
 
   const [rawOrders, setRawOrders] = useState([]);
   const [topPerformer, setTopPerformer] = useState(null);
+  
+  const [pendingStaff, setPendingStaff] = useState([]);
+  const [notificationsVisible, setNotificationsVisible] = useState(false);
+  const [todaysActivity, setTodaysActivity] = useState([]);
+  const [activityDate, setActivityDate] = useState(new Date());
+  const [loadingActivity, setLoadingActivity] = useState(false);
 
-  const loadDashboard = async () => {
-    setLoadingStats(true);
-    try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      // Today's orders
-      const { data: todayOrders } = await supabase
-        .from('orders')
-        .select('total_payable')
-        .gte('created_at', today.toISOString());
-
-      const todaySales = (todayOrders || []).reduce((s, o) => s + (o.total_payable || 0), 0);
-
-      // Total orders count
-      const { count: totalOrders } = await supabase
-        .from('orders')
-        .select('id', { count: 'exact', head: true });
-
-      // Total products
-      const { count: totalProducts } = await supabase
-        .from('products')
-        .select('id', { count: 'exact', head: true });
-
-      // Low / out of stock
-      const { data: lowStockItems } = await supabase
-        .from('products')
-        .select('id, name, "stockQty", status')
-        .in('status', ['LOW STOCK', 'OUT OF STOCK'])
-        .order('"stockQty"', { ascending: true })
-        .limit(5);
-
-      // Recent orders
-      const { data: recent } = await supabase
-        .from('orders')
-        .select('id, customer_name, total_payable, payment_method, created_at')
-        .order('created_at', { ascending: false })
-        .limit(3);
-
-      // All past 6 months orders for the chart
-      let sixMonthsAgo = new Date();
-      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
-      sixMonthsAgo.setHours(0,0,0,0);
-      const { data: allOrders } = await supabase
-        .from('orders')
-        .select('*')
-        .gte('created_at', sixMonthsAgo.toISOString());
-      
-      const { data: allItems } = await supabase
-        .from('order_items')
-        .select('*');
-        
-      const { data: allProducts } = await supabase.from('products').select('id, name, storage, color');
-
-      // Calculate Products Sold Today
-      let soldToday = 0;
-      if (allOrders?.length && allItems?.length) {
-        const todayOrderIds = new Set(allOrders.filter(o => new Date(o.created_at) >= today).map(o => o.id));
-        soldToday = allItems.filter(i => todayOrderIds.has(i.order_id)).reduce((sum, item) => sum + (item.qty || 0), 0);
-      }
-
-      setStats({
-        todaySales,
-        totalOrders:   totalOrders   || 0,
-        soldToday:     soldToday     || 0,
-        lowStockCount: (lowStockItems || []).length,
-      });
-      setLowStock(lowStockItems || []);
-      setRecentOrders(recent || []);
-      setRawOrders(allOrders || []);
-
-      // Calculate Top Performer
-      if (allOrders?.length && allItems?.length && allProducts?.length) {
-        const qtyMap = {};
-        allItems.forEach(i => { qtyMap[i.product_id] = (qtyMap[i.product_id] || 0) + (i.qty || 0); });
-        let topId = Object.keys(qtyMap).sort((a,b) => qtyMap[b] - qtyMap[a])[0];
-        if (topId) {
-          const prodInfo = allProducts.find(p => p.id === topId);
-          if (prodInfo) {
-            setTopPerformer({
-              name: prodInfo.name,
-              sub: (prodInfo.storage || prodInfo.color) ? `${prodInfo.storage || ''} ${prodInfo.color || ''}`.trim() : 'Best Seller',
-              pct: 95, // arbitrary placeholder
-              sold: qtyMap[topId],
-            });
-          }
+  const showDatePicker = () => {
+    DateTimePickerAndroid.open({
+      value: activityDate,
+      onChange: (event, selectedDate) => {
+        if (selectedDate) {
+          setActivityDate(selectedDate);
         }
-      }
+      },
+      mode: 'date',
+      is24Hour: true,
+    });
+  };
+
+  const fetchActivityFeed = async (date) => {
+    setLoadingActivity(true);
+    try {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const [ { data: activityLogs }, { data: newProfiles } ] = await Promise.all([
+        supabase.from('activity_logs').select('id, action_type, entity_type, entity_name, details, created_at')
+          .gte('created_at', startOfDay.toISOString())
+          .lte('created_at', endOfDay.toISOString()),
+        supabase.from('profiles').select('id, full_name, created_at')
+          .gte('created_at', startOfDay.toISOString())
+          .lte('created_at', endOfDay.toISOString()),
+      ]);
+
+      const allActivities = [];
+      (activityLogs || []).forEach(l => {
+        let icon = '📝'; let color = '#6366F1'; let bgColor = '#EEF2FF';
+        if (l.entity_type === 'BRAND') {
+          icon = '🏷️';
+          if (l.action_type === 'ADD') { color = '#3B82F6'; bgColor = '#EFF6FF'; }
+          if (l.action_type === 'DELETE') { color = '#EF4444'; bgColor = '#FEF2F2'; }
+        } else if (l.entity_type === 'PRODUCT') {
+          icon = '📱';
+          if (l.action_type === 'ADD') { color = '#10B981'; bgColor = '#ECFDF5'; }
+          if (l.action_type === 'DELETE') { color = '#EF4444'; bgColor = '#FEF2F2'; }
+        } else if (l.entity_type === 'STOCK') {
+          icon = '📦'; color = '#F59E0B'; bgColor = '#FFFBEB';
+        }
+        allActivities.push({
+          id: `log_${l.id}`,
+          title: l.details || `${l.action_type} ${l.entity_type}`,
+          sub: l.entity_name,
+          time: l.created_at,
+          icon, color, bgColor
+        });
+      });
+
+      (newProfiles || []).forEach(p => {
+        allActivities.push({
+          id: `prof_${p.id}`,
+          title: `New Staff Registered`,
+          sub: p.full_name,
+          time: p.created_at,
+          icon: '👤', color: '#8B5CF6', bgColor: '#F5F3FF'
+        });
+      });
+
+      allActivities.sort((a, b) => new Date(b.time) - new Date(a.time));
+      setTodaysActivity(allActivities);
     } catch (e) {
-      console.error('Dashboard load error:', e.message);
+      console.error('Activity feed error:', e.message);
     } finally {
-      setLoadingStats(false);
+      setLoadingActivity(false);
     }
   };
 
-  useFocusEffect(useCallback(() => { loadDashboard(); }, []));
+const loadDashboard = async () => {
+  // ── Serve from cache if fresh (< 60 seconds old) ──────────────────
+  const now = Date.now();
+  if (_dashboardCache && (now - _cacheTime) < CACHE_TTL) {
+    const c = _dashboardCache;
+    setStats(c.stats);
+    setLowStock(c.lowStock);
+    setRecentOrders(c.recentOrders);
+    setRawOrders(c.rawOrders);
+    setPendingStaff(c.pendingStaff);
+    setSoldHistory(c.soldHistory);
+    setTopPerformer(c.topPerformer);
+    setLoadingStats(false);
+    return;
+  }
+
+  setLoadingStats(true);
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
+    // 🚀 All queries fire simultaneously — deduped & limited
+    const [
+      { data: todayOrders },
+      { count: totalOrders },
+      { count: totalProducts },
+      { data: lowStockItems },
+      { data: recent },
+      { data: pendingRequests },
+      { data: allOrders },       // used for chart + revenue + soldToday
+      { data: allItems },        // limited to recent 500 rows
+      { data: allProducts },
+      { data: soldItems },
+    ] = await Promise.all([
+      supabase.from('orders').select('total_payable').gte('created_at', today.toISOString()),
+      supabase.from('orders').select('id', { count: 'exact', head: true }),
+      supabase.from('products').select('id', { count: 'exact', head: true }),
+      supabase.from('products')
+        .select('id, name, "stockQty", status')
+        .in('status', ['LOW STOCK', 'OUT OF STOCK'])
+        .order('"stockQty"', { ascending: true })
+        .limit(DASHBOARD_LOW_STOCK_LIMIT),
+      supabase.from('orders')
+        .select('id, customer_name, total_payable, payment_method, created_at')
+        .order('created_at', { ascending: false })
+        .limit(RECENT_ORDERS_LIMIT),
+      supabase.from('pending_login_requests')
+        .select('id, full_name, username')
+        .eq('status', 'pending'),
+      // Single orders query covers chart + revenue (removed duplicate allOrdersRevenue)
+      supabase.from('orders')
+        .select('id, total_payable, created_at')
+        .gte('created_at', sixMonthsAgo.toISOString()),
+      // Limit order_items — was fetching ALL rows with no limit
+      supabase.from('order_items')
+        .select('order_id, product_id, qty')
+        .order('order_id', { ascending: false })
+        .limit(500),
+      supabase.from('products')
+        .select('id, name, storage, color'),
+      supabase.from('sold_products')
+        .select('id, name, price, color, category')
+        .order('sold_at', { ascending: false })
+        .limit(4),
+    ]);
+
+    // ── Calculations ──────────────────────────────────────────────────
+
+    const todaySales = (todayOrders || []).reduce(
+      (s, o) => s + (Number(o.total_payable) || 0), 0
+    );
+
+    const totalRevenue = (allOrders || []).reduce(
+      (s, o) => s + (Number(o.total_payable) || 0), 0
+    );
+
+    // Products sold today
+    let soldToday = 0;
+    if (allOrders?.length && allItems?.length) {
+      const todayOrderIds = new Set(
+        allOrders
+          .filter(o => new Date(o.created_at) >= today)
+          .map(o => o.id)
+      );
+      soldToday = allItems
+        .filter(i => todayOrderIds.has(i.order_id))
+        .reduce((sum, item) => sum + (item.qty || 0), 0);
+    }
+
+    // Top performer
+    let topPerformerData = null;
+    if (allOrders?.length && allItems?.length && allProducts?.length) {
+      const qtyMap = {};
+      allItems.forEach(i => {
+        qtyMap[i.product_id] = (qtyMap[i.product_id] || 0) + (i.qty || 0);
+      });
+      const topId = Object.keys(qtyMap).sort((a, b) => qtyMap[b] - qtyMap[a])[0];
+      if (topId) {
+        const prodInfo = allProducts.find(p => p.id === topId);
+        if (prodInfo) {
+          topPerformerData = {
+            name: prodInfo.name,
+            sub: (prodInfo.storage || prodInfo.color)
+              ? `${prodInfo.storage || ''} ${prodInfo.color || ''}`.trim()
+              : 'Best Seller',
+            pct: 95,
+            sold: qtyMap[topId],
+          };
+        }
+      }
+    }
+
+    // ── Set State ─────────────────────────────────────────────────────
+
+    const result = {
+      stats: {
+        todaySales,
+        totalOrders:   totalOrders  || 0,
+        soldToday:     soldToday    || 0,
+        totalRevenue:  totalRevenue || 0,
+        lowStockCount: (lowStockItems || []).length,
+      },
+      lowStock:     lowStockItems    || [],
+      recentOrders: recent           || [],
+      rawOrders:    allOrders        || [],
+      pendingStaff: pendingRequests  || [],
+      soldHistory:  soldItems        || [],
+      topPerformer: topPerformerData,
+    };
+
+    // ── Store in module-level cache ────────────────────────────────────
+    _dashboardCache = result;
+    _cacheTime = Date.now();
+
+    setStats(result.stats);
+    setLowStock(result.lowStock);
+    setRecentOrders(result.recentOrders);
+    setRawOrders(result.rawOrders);
+    setPendingStaff(result.pendingStaff);
+    setSoldHistory(result.soldHistory);
+    setTopPerformer(result.topPerformer);
+
+  } catch (e) {
+    console.error('Dashboard load error:', e.message);
+    Alert.alert('Error', 'Failed to load dashboard data.');
+  } finally {
+    setLoadingStats(false);
+  }
+};
+
+  // Single useFocusEffect — dashboard loads from cache on tab switch, activity always refreshes
+  useFocusEffect(useCallback(() => {
+    loadDashboard();
+    fetchActivityFeed(activityDate);
+  }, [activityDate]));
 
   // Build display name from profile
   const displayName = profile?.full_name || profile?.username || 'Admin';
@@ -328,7 +480,7 @@ export default function Dashboard() {
 
     validOrders.forEach(o => {
       const p = parseFloat(o.total_payable) || 0;
-      const profit = p * 0.15; // 15% estimated margin
+      const profit = p * ESTIMATED_PROFIT_MARGIN; // from constants
       
       const oDate = new Date(o.created_at);
       let groupKey = '';
@@ -469,6 +621,57 @@ export default function Dashboard() {
         </TouchableOpacity>
       </Modal>
 
+      {/* Notifications Dropdown Modal */}
+      <Modal
+        visible={notificationsVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNotificationsVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setNotificationsVisible(false)}
+        >
+          <View style={styles.dropdownMenu}>
+            <View style={styles.dropdownHeader}>
+              <Text style={{ fontSize: 14, fontWeight: '800', color: '#1E293B' }}>Notifications</Text>
+            </View>
+            <View style={styles.dropdownSep} />
+            <ScrollView style={{ maxHeight: 300 }}>
+              {pendingStaff.length === 0 && lowStock.length === 0 && (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={{ color: '#94A3B8', fontSize: 13 }}>No new notifications.</Text>
+                </View>
+              )}
+              {pendingStaff.length > 0 && (
+                <TouchableOpacity style={styles.dropdownItem} onPress={() => { setNotificationsVisible(false); navigation.navigate('StaffList'); }}>
+                  <View style={[styles.dropdownItemIcon, { backgroundColor: '#FEF3C7' }]}>
+                    <UserIcon size={16} color="#D97706" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#1E293B' }}>{pendingStaff.length} Pending Approvals</Text>
+                    <Text style={{ fontSize: 11, color: '#64748B' }}>Review new staff registrations</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+              {pendingStaff.length > 0 && <View style={styles.dropdownSep} />}
+              {lowStock.length > 0 && (
+                <TouchableOpacity style={styles.dropdownItem}>
+                  <View style={[styles.dropdownItemIcon, { backgroundColor: '#FEE2E2' }]}>
+                    <BoxIcon size={16} color="#DC2626" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#1E293B' }}>{lowStock.length} Items to Refill</Text>
+                    <Text style={{ fontSize: 11, color: '#64748B' }}>Stock is critically low</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTitle}>
@@ -476,10 +679,10 @@ export default function Dashboard() {
           <Text style={styles.headerTitleText}>Vishnu Mobile Shop</Text>
         </View>
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.iconBtn}>
+          {/*<TouchableOpacity style={styles.iconBtn} onPress={() => setNotificationsVisible(true)}>
             <BellIcon size={18} color="#fff" />
-            <View style={styles.badge} />
-          </TouchableOpacity>
+            {(pendingStaff.length > 0 || lowStock.length > 0) && <View style={styles.badge} />}
+          </TouchableOpacity>*/}
           <TouchableOpacity
             style={styles.iconBtn}
             onPress={() => setProfileMenuVisible(true)}
@@ -504,7 +707,7 @@ export default function Dashboard() {
             { label: 'Today Sales',     value: formatINR(stats.todaySales),   iconBg: 'rgba(61,90,241,0.15)',   iconColor: '#3d5af1', IconComp: DollarIcon },
             { label: 'Total Orders',    value: String(stats.totalOrders),     iconBg: 'rgba(34,197,94,0.15)',   iconColor: '#22c55e', IconComp: BoxIcon },
             { label: 'Products Sold',   value: String(stats.soldToday),       iconBg: 'rgba(167,139,250,0.15)', iconColor: '#a78bfa', IconComp: CalendarIcon, link: 'ProductsSoldReport' },
-            { label: 'Low Stock Items', value: String(stats.lowStockCount),   iconBg: 'rgba(245,158,11,0.15)',  iconColor: '#f59e0b', IconComp: StarIcon },
+            { label: 'Total Revenue', value: formatINR(stats.totalRevenue), iconBg: 'rgba(22,163,74,0.15)', iconColor: '#16a34a', IconComp: DollarIcon },
           ].map((s) => {
             const CardView = s.link ? TouchableOpacity : View;
             return (
@@ -577,14 +780,14 @@ export default function Dashboard() {
         </View>
 
         {/* Recent Transactions */}
-        <View style={styles.section}>
+        {/* <View style={styles.section}>
           <View style={styles.sectionHead}>
             <Text style={styles.sectionTitle}>Recent Transactions</Text>
             <TouchableOpacity>
               <Text style={styles.seeAll}>See All</Text>
             </TouchableOpacity>
           </View>
-          {/* Recent Transactions - live from Supabase */}
+          
           {recentOrders.length === 0 ? (
             <View style={{ alignItems: 'center', paddingVertical: 12 }}>
               <Text style={{ color: '#aaa', fontSize: 13 }}>No orders yet</Text>
@@ -608,36 +811,77 @@ export default function Dashboard() {
               </View>
             ))
           )}
-        </View>
+        </View> */}
 
-        {/* Stock Replenishment */}
-        <View style={styles.section}>
+        {/* Products Sold History */}
+<View style={styles.section}>
+  <View style={styles.sectionHead}>
+    <Text style={styles.sectionTitle}>Products Sold History</Text>
+    <TouchableOpacity onPress={() => navigation.navigate('ProductsSoldScreen')}>
+      <Text style={styles.seeAll}>See All</Text>
+    </TouchableOpacity>
+  </View>
+  {loadingStats ? (
+    <ActivityIndicator color="#2D2F8E" />
+  ) : soldHistory.length === 0 ? (
+    <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+      <Text style={{ color: '#94A3B8', fontSize: 13 }}>No products sold yet.</Text>
+    </View>
+  ) : (
+    soldHistory.map((item, i) => (
+      <View key={item.id} style={styles.txRow}>
+        <View style={styles.txIcon}>
+          <SmartphoneIcon size={16} color="#7986cb" />
+        </View>
+        <View style={styles.txInfo}>
+          <Text style={styles.txId} numberOfLines={1}>{item.name}</Text>
+          <Text style={styles.txProduct}>{item.color || item.category || '—'}</Text>
+        </View>
+        <View style={styles.txRight}>
+          <Text style={styles.txAmount}>₹{Number(item.price).toLocaleString('en-IN')}</Text>
+          <Text style={[styles.txStatus, { color: '#22c55e' }]}>SOLD</Text>
+        </View>
+      </View>
+    ))
+  )}
+</View>
+
+        {/* Activity Feed */}
+        <View style={[styles.section, { marginBottom: 30 }]}>
           <View style={styles.sectionHead}>
-            <Text style={styles.sectionTitle}>Stock Replenishment</Text>
-            <View style={styles.criticalBadge}>
-              <View style={styles.criticalDot} />
-              <Text style={styles.criticalBadgeText}>16 Critical</Text>
-            </View>
+            <Text style={styles.sectionTitle}>Activity Feed</Text>
+            <TouchableOpacity onPress={showDatePicker} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F1F5F9', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+              <CalendarIcon size={14} color="#64748B" />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>
+                {activityDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </Text>
+            </TouchableOpacity>
           </View>
-          {/* Stock Replenishment - live from Supabase */}
-          {lowStock.length === 0 ? (
+          {loadingActivity ? (
+            <ActivityIndicator color="#2D2F8E" />
+          ) : todaysActivity.length === 0 ? (
             <View style={{ alignItems: 'center', paddingVertical: 12 }}>
-              <Text style={{ color: '#22c55e', fontSize: 13, fontWeight: '700' }}>✅ All stock levels healthy!</Text>
+              <Text style={{ color: '#94A3B8', fontSize: 13 }}>No activity recorded for this date.</Text>
             </View>
           ) : (
-            lowStock.map((s) => (
-              <View key={s.id} style={styles.stockRow}>
-                <View style={[styles.stockBox, s.status === 'OUT OF STOCK' ? styles.stockBoxCritical : styles.stockBoxWarn]}>
-                  <SmartphoneIcon size={22} color={s.status === 'OUT OF STOCK' ? '#ef4444' : '#f59e0b'} />
+            todaysActivity.map((act) => {
+              const d = new Date(act.time);
+              const timeStr = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+              return (
+                <View key={act.id} style={styles.txRow}>
+                  <View style={[styles.txIcon, { backgroundColor: act.bgColor }]}>
+                    <Text style={{ fontSize: 16 }}>{act.icon}</Text>
+                  </View>
+                  <View style={styles.txInfo}>
+                    <Text style={styles.txId} numberOfLines={1}>{act.title}</Text>
+                    <Text style={styles.txProduct}>{act.sub}</Text>
+                  </View>
+                  <View style={styles.txRight}>
+                    <Text style={[styles.txAmount, { color: '#94A3B8', fontSize: 11 }]}>{timeStr}</Text>
+                  </View>
                 </View>
-                <Text style={styles.stockName} numberOfLines={1}>{s.name}</Text>
-                <View style={styles.stockRight}>
-                  <Text style={[styles.stockLeft, s.status === 'OUT OF STOCK' ? styles.stockCritical : styles.stockWarn]}>
-                    {s['stockQty']} left
-                  </Text>
-                </View>
-              </View>
-            ))
+              );
+            })
           )}
         </View>
       </ScrollView>
@@ -674,6 +918,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     width: 36, height: 36,
     alignItems: 'center', justifyContent: 'center',
+   
   },
   badge: {
     position: 'absolute', top: 6, right: 6,
@@ -687,6 +932,7 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-start', alignItems: 'flex-end',
     paddingTop: 68, paddingRight: 16,
+   
   },
   dropdownMenu: {
     backgroundColor: '#fff', borderRadius: 16, width: 230,

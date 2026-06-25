@@ -19,19 +19,13 @@ import FilterIcon from '../../../assets/filter_icon.svg';
 import DownloadIcon from '../../../assets/upload.svg';
 import Profile from '../../../assets/person.svg';
 import { useAuth } from '../../../context/AuthContext';
-import Svg, { Path, Circle, Rect, Polyline, Line } from "react-native-svg";
-// Install: npm install react-native-qrcode-svg react-native-svg
-// Then: cd ios && pod install
+import Svg, { Path, Circle, Polyline, Line } from "react-native-svg";
+import BackArrow from '../../../assets/back-arrow.svg';
+import { useNavigation } from '@react-navigation/native';
 
 // ─── Icon Placeholders ───────────────────────────────────────────────────────
-// Replace these with your actual icon imports, e.g.:
-// import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
-const IconPlaceholder = ({
-  name,
-  size = 20,
-  color = '#888',
-}) => (
+const IconPlaceholder = ({ name, size = 20, color = '#888' }) => (
   <View
     style={{
       width: size,
@@ -76,29 +70,19 @@ const generateQRValue = (type) => {
     type: type === 'in' ? 'CHECK_IN' : 'CHECK_OUT',
     sessionId,
     timestamp,
-    validFor: 300, // seconds
+    validFor: 20,
   });
 };
 
 // ─── QR Modal ─────────────────────────────────────────────────────────────────
-const QRModal = ({
-  visible,
-  type,
-  qrValue,
-  onClose,
-}) => {
+const QRModal = ({ visible, type, qrValue, onClose }) => {
   const isIn = type === 'in';
   const parsed = qrValue ? JSON.parse(qrValue) : null;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <View style={styles.modalCard}>
-          {/* Modal Header */}
           <View style={[styles.modalHeader, isIn ? styles.modalHeaderIn : styles.modalHeaderOut]}>
             <Text style={styles.modalHeaderText}>
               {isIn ? '✓ Check-In QR Code' : '✗ Check-Out QR Code'}
@@ -108,27 +92,18 @@ const QRModal = ({
             </TouchableOpacity>
           </View>
 
-          {/* QR Code */}
           <View style={styles.modalQRWrapper}>
             {qrValue ? (
-              <QRCode
-                value={qrValue}
-                size={200}
-                color="#1A1A2E"
-                backgroundColor="#FFFFFF"
-              />
+              <QRCode value={qrValue} size={200} color="#1A1A2E" backgroundColor="#FFFFFF" />
             ) : null}
           </View>
 
-          {/* Session Info */}
           {parsed && (
             <View style={styles.modalMeta}>
               <Text style={styles.modalMetaLabel}>Session ID</Text>
               <Text style={styles.modalMetaValue}>{parsed.sessionId}</Text>
               <Text style={styles.modalMetaLabel}>Generated At</Text>
-              <Text style={styles.modalMetaValue}>
-                {new Date(parsed.timestamp).toLocaleTimeString()}
-              </Text>
+              <Text style={styles.modalMetaValue}>{new Date(parsed.timestamp).toLocaleTimeString()}</Text>
               <Text style={styles.modalMetaLabel}>Valid For</Text>
               <Text style={styles.modalMetaValue}>{parsed.validFor}s</Text>
             </View>
@@ -153,65 +128,34 @@ const STATUS_COLORS = {
   ABSENT: '#888',
 };
 
-const logs = [
-  {
-    id: '1',
-    initials: 'AK',
-    name: 'Amit Kumar',
-    role: 'Sales Associate',
-    time: 'Today, 09:15 AM',
-    status: 'PRESENT',
-    avatarColor: '#4A90D9',
-  },
-  {
-    id: '2',
-    initials: 'RS',
-    name: 'Rahul Singh',
-    role: 'Tech Support',
-    time: 'Today, 10:05 AM',
-    status: 'LATE',
-    avatarColor: '#7B68EE',
-  },
-  {
-    id: '3',
-    initials: 'PP',
-    name: 'Priya Patel',
-    role: 'Inventory Mgr',
-    time: 'Today, 09:00 AM',
-    status: 'HALF-DAY',
-    avatarColor: '#B0B0B0',
-  },
-];
-
 // ─── Sub-components ───────────────────────────────────────────────────────────
-
-const Header = ({ onProfilePress }) => (
-  <View style={styles.header}>
-    <View style={styles.headerTitle}>
-      <View style={styles.dot} />
-      <Text style={styles.headerTitleText}>Vishnu Mobile Shop</Text>
-    </View>
-    <View style={styles.headerRight}>
-      <View style={styles.iconBtn}>
-        <IconPlaceholder name="Bell" size={16} color="#fff" />
+const Header = ({ onProfilePress, showBackButton = true }) => {
+  const navigation = useNavigation();
+  return (
+    <View style={styles.header}>
+      <View style={styles.headerTitle}>
+        {showBackButton && (
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <BackArrow width={20} height={20} fill="#2D2F8E" stroke="#2D2F8E" />
+          </TouchableOpacity>
+        )}
+        <Text style={styles.headerTitleText}>Vishnu Mobile Shop</Text>
       </View>
-      <TouchableOpacity style={styles.iconBtn} onPress={onProfilePress}>
-        <Profile width={18} height={18} fill="#fff" />
-      </TouchableOpacity>
+      <View style={styles.headerRightVisible}>
+        <TouchableOpacity style={styles.iconBtn} onPress={onProfilePress}>
+          <Profile width={18} height={18} fill="#fff" />
+        </TouchableOpacity>
+      </View>
     </View>
-  </View>
-);
+  );
+};
 
-const CheckCard = ({
-  type,
-  onGenerate,
-}) => {
+const CheckCard = ({ type, onGenerate }) => {
   const isIn = type === 'in';
   const [qrValue, setQrValue] = useState(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const timerRef = useRef(null);
 
-  // Countdown timer
   useEffect(() => {
     if (secondsLeft <= 0) {
       clearInterval(timerRef.current);
@@ -224,14 +168,12 @@ const CheckCard = ({
       });
     }, 1000);
     return () => clearInterval(timerRef.current);
-  }, [qrValue]); // restart whenever QR is regenerated
-
-  // We need useRef for the timer so import it at the top of the file
+  }, [qrValue]);
 
   const handleGenerate = () => {
     const value = generateQRValue(type);
     setQrValue(value);
-    setSecondsLeft(300); // 300s = 5 min
+    setSecondsLeft(20);
     onGenerate(type, value);
   };
 
@@ -240,29 +182,21 @@ const CheckCard = ({
 
   return (
     <View style={[styles.card, isIn && styles.cardActive]}>
-      {/* Badge */}
       <View style={[styles.badge, isIn ? styles.badgeIn : styles.badgeOut]}>
         <Text style={[styles.badgeText, isIn ? styles.badgeTextIn : styles.badgeTextOut]}>
           {isIn ? 'IN' : 'OUT'}
         </Text>
       </View>
 
-      {/* Corner icon */}
       <View style={styles.cardCornerIcon}>
         <IconPlaceholder name={isIn ? '→' : '←'} size={16} color="#888" />
       </View>
 
       <Text style={styles.cardTitle}>{isIn ? 'Check-In' : 'Check-Out'}</Text>
 
-      {/* Live QR Code or dark placeholder */}
       <View style={[styles.qrBox, !isIn && styles.qrBoxOut]}>
         {qrValue ? (
-          <QRCode
-            value={qrValue}
-            size={80}
-            color="#FFFFFF"
-            backgroundColor="transparent"
-          />
+          <QRCode value={qrValue} size={80} color="#FFFFFF" backgroundColor="transparent" />
         ) : (
           <View style={styles.qrIdleContent}>
             <View style={styles.qrIdleIcon}>
@@ -277,16 +211,11 @@ const CheckCard = ({
         onPress={handleGenerate}
         style={[styles.generateBtn, isIn && styles.generateBtnActive]}
         activeOpacity={0.8}>
-        <Text
-          style={[
-            styles.generateBtnText,
-            isIn && styles.generateBtnTextActive,
-          ]}>
+        <Text style={[styles.generateBtnText, isIn && styles.generateBtnTextActive]}>
           {qrValue ? 'Regenerate' : 'Generate'}
         </Text>
       </TouchableOpacity>
 
-      {/* Countdown timer */}
       {qrValue && (
         <Text style={[styles.timerText, {color: expired ? '#ef4444' : timerColor}]}>
           {expired ? '⚠ QR Expired — Regenerate' : `Valid for ${secondsLeft}s`}
@@ -306,9 +235,7 @@ const LogItem = ({entry}) => (
       <View style={styles.logSubRow}>
         <Text style={styles.logRole}>{entry.role}</Text>
         <Text style={styles.logDot}> • </Text>
-        <Text style={[styles.logStatus, {color: STATUS_COLORS[entry.status]}]}>
-          {entry.status}
-        </Text>
+        <Text style={[styles.logStatus, {color: STATUS_COLORS[entry.status]}]}>{entry.status}</Text>
         <Text style={styles.logDot}> • </Text>
         <Text style={{fontSize: 10, fontWeight: '800', color: entry.type === 'CHECK_IN' ? '#22c55e' : '#ef4444'}}>
           {entry.type === 'CHECK_IN' ? 'CHECK-IN' : 'CHECK-OUT'}
@@ -320,12 +247,7 @@ const LogItem = ({entry}) => (
 );
 
 // ─── Filter Modal ─────────────────────────────────────────────────────────────
-const FilterModal = ({
-  visible,
-  currentFilter,
-  onApply,
-  onClose,
-}) => (
+const FilterModal = ({ visible, currentFilter, onApply, onClose }) => (
   <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
     <View style={styles.bottomSheetOverlay}>
       <View style={styles.bottomSheet}>
@@ -341,14 +263,10 @@ const FilterModal = ({
             <TouchableOpacity
               key={status}
               onPress={() => onApply(status)}
-              style={[
-                styles.filterChip,
-                currentFilter === status && styles.filterChipActive
-              ]}>
-              <Text style={[
-                styles.filterChipText,
-                currentFilter === status && styles.filterChipTextActive
-              ]}>{status}</Text>
+              style={[styles.filterChip, currentFilter === status && styles.filterChipActive]}>
+              <Text style={[styles.filterChipText, currentFilter === status && styles.filterChipTextActive]}>
+                {status}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -376,17 +294,12 @@ const AttendanceScreen = ({ navigation }) => {
 
   const handleLogout = () => {
     setProfileMenuVisible(false);
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Logout', style: 'destructive', onPress: () => signOut() },
-      ]
-    );
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Logout', style: 'destructive', onPress: () => signOut() },
+    ]);
   };
 
-  // ── Fetch real attendance logs from Supabase ─────────────────────
   const loadLogs = async () => {
     setLoadingLogs(true);
     try {
@@ -398,13 +311,13 @@ const AttendanceScreen = ({ navigation }) => {
       if (error) throw error;
       setLogs(
         (data || []).map(l => ({
-          id:       l.id,
-          initials: (l.name || 'ST').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase(),
-          name:     l.name || 'Staff',
-          role:     l.role || 'Staff',
-          time:     `${new Date(l.created_at).toLocaleDateString('en-IN', {day:'2-digit', month:'short'})} ${l.time}`,
-          status:   l.status,
-          type:     l.check_type,
+          id:          l.id,
+          initials:    (l.name || 'ST').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase(),
+          name:        l.name || 'Staff',
+          role:        l.role || 'Staff',
+          time:        `${new Date(l.created_at).toLocaleDateString('en-IN', {day:'2-digit', month:'short'})} ${l.time}`,
+          status:      l.status,
+          type:        l.check_type,
           avatarColor: l.check_type === 'CHECK_IN' ? '#4A90D9' : '#7B68EE',
         }))
       );
@@ -471,7 +384,6 @@ const AttendanceScreen = ({ navigation }) => {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#F2F4F7" />
 
-      {/* QR Full-Screen Modal */}
       <QRModal
         visible={modalVisible}
         type={modalType}
@@ -479,18 +391,13 @@ const AttendanceScreen = ({ navigation }) => {
         onClose={() => setModalVisible(false)}
       />
 
-      {/* Filter Bottom Sheet */}
-      <FilterModal 
+      <FilterModal
         visible={filterVisible}
         currentFilter={filterStatus}
-        onApply={(status) => {
-          setFilterStatus(status);
-          setFilterVisible(false);
-        }}
+        onApply={(status) => { setFilterStatus(status); setFilterVisible(false); }}
         onClose={() => setFilterVisible(false)}
       />
 
-      {/* Profile Dropdown Modal */}
       <Modal
         visible={profileMenuVisible}
         transparent
@@ -513,16 +420,20 @@ const AttendanceScreen = ({ navigation }) => {
               </View>
             </View>
             <View style={styles.dropdownSep} />
-            <TouchableOpacity
-              style={styles.dropdownItem}
-              onPress={() => { setProfileMenuVisible(false); navigation.navigate('Settings'); }}
-            >
-              <View style={styles.dropdownItemIcon}>
-                <SettingsIcon size={18} color="#2D2F8E" />
-              </View>
-              <Text style={styles.dropdownItemText}>Settings</Text>
-            </TouchableOpacity>
-            <View style={styles.dropdownSep} />
+            {profile?.role !== 'attendance_admin' && (
+              <>
+                <TouchableOpacity
+                  style={styles.dropdownItem}
+                  onPress={() => { setProfileMenuVisible(false); navigation.navigate('Settings'); }}
+                >
+                  <View style={styles.dropdownItemIcon}>
+                    <SettingsIcon size={18} color="#2D2F8E" />
+                  </View>
+                  <Text style={styles.dropdownItemText}>Settings</Text>
+                </TouchableOpacity>
+                <View style={styles.dropdownSep} />
+              </>
+            )}
             <TouchableOpacity style={styles.dropdownItem} onPress={handleLogout}>
               <View style={[styles.dropdownItemIcon, styles.dropdownItemIconDanger]}>
                 <LogoutIcon size={18} color="#ef4444" />
@@ -533,45 +444,37 @@ const AttendanceScreen = ({ navigation }) => {
         </TouchableOpacity>
       </Modal>
 
-      {/* ── Fixed Header ── */}
-      <Header onProfilePress={() => setProfileMenuVisible(true)} />
+      <Header
+        onProfilePress={() => setProfileMenuVisible(true)}
+        showBackButton={profile?.role !== 'attendance_admin'}
+      />
 
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
 
-        {/* ── Page Title ── */}
-        {/* ── Page Title ── */}
-<View style={styles.pageTitleRow}>
-  <View>
-    <Text style={styles.pageTitle}>Attendance</Text>
-    <Text style={styles.pageSubtitle}>Operations Control</Text>
-  </View>
-  <TouchableOpacity
-    style={styles.staffListBtn}
-    onPress={() => navigation.navigate('StaffList')}
-    activeOpacity={0.85}>
-    <Text style={styles.staffListBtnText}>👥 Staff List</Text>
-  </TouchableOpacity>
-</View>
+        <View style={styles.pageTitleRow}>
+          <View>
+            <Text style={styles.pageTitle}>Attendance</Text>
+            <Text style={styles.pageSubtitle}>Operations Control</Text>
+          </View>
+        </View>
 
-        {/* ── Check In / Out Cards ── */}
         <View style={styles.cardsRow}>
           <CheckCard type="in" onGenerate={handleGenerate} />
           <CheckCard type="out" onGenerate={handleGenerate} />
         </View>
 
-        {/* ── Logs Section ── */}
         <View style={styles.logsSection}>
           <View style={styles.logsHeader}>
             <Text style={styles.logsTitle}>Logs</Text>
             <View style={styles.logsActions}>
               <TouchableOpacity style={styles.iconBtn} onPress={() => setFilterVisible(true)}>
-                <FilterIcon width={18} height={18} stroke="#555" />
+                <FilterIcon width={18} height={18} stroke="#ffffffff" />
               </TouchableOpacity>
               <TouchableOpacity style={styles.iconBtn} onPress={generatePDF}>
-                <DownloadIcon width={18} height={18} fill="#555" />
+                <DownloadIcon width={18} height={18} fill="#ffffffff" />
               </TouchableOpacity>
             </View>
           </View>
@@ -598,18 +501,10 @@ const AttendanceScreen = ({ navigation }) => {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#F5F6FA',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 32,
-  },
+  safeArea: { flex: 1, backgroundColor: '#F5F6FA' },
+  scrollView: { flex: 1 },
+  scrollContent: { paddingBottom: 32 },
 
-  // Header
   header: {
     backgroundColor: '#fff',
     paddingHorizontal: 20,
@@ -620,7 +515,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   headerTitle: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerRight: { flexDirection: 'row', gap: 8 },
+  headerRight: { flexDirection: 'row', gap: 8, opacity: 0 },
+  headerRightVisible: { flexDirection: 'row', gap: 8 },
   headerTitleText: { fontSize: 16, fontWeight: '800', color: '#2D2F8E' },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e' },
   iconBtn: {
@@ -628,7 +524,6 @@ const styles = StyleSheet.create({
     width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
   },
 
-  // Dropdown Styles
   dropdownModalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-start', alignItems: 'flex-end',
@@ -645,8 +540,7 @@ const styles = StyleSheet.create({
   },
   dropdownAvatar: {
     width: 38, height: 38, borderRadius: 19,
-    backgroundColor: '#2D2F8E',
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#2D2F8E', alignItems: 'center', justifyContent: 'center',
   },
   dropdownAvatarText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   dropdownName: { fontSize: 13, fontWeight: '800', color: '#1E293B' },
@@ -658,460 +552,154 @@ const styles = StyleSheet.create({
   },
   dropdownItemIcon: {
     width: 32, height: 32, borderRadius: 8,
-    backgroundColor: '#EEF0FF',
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#EEF0FF', alignItems: 'center', justifyContent: 'center',
   },
   dropdownItemIconDanger: { backgroundColor: '#FEE2E2' },
   dropdownItemText: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
   dropdownItemTextDanger: { color: '#ef4444' },
 
-  // Page Title
   pageTitleRow: {
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 16,
-  },
-  pageTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1A1A2E',
-    letterSpacing: -0.5,
-  },
-  pageSubtitle: {
-    fontSize: 13,
-    color: '#8A9BB0',
-    marginTop: 2,
-  },
-pageTitleRow: {
-  paddingHorizontal: 16,
-  paddingTop: 8,
-  paddingBottom: 16,
-  flexDirection: 'row',          // add this
-  justifyContent: 'space-between', // add this
-  alignItems: 'flex-end',         // add this
-},
-staffListBtn: {
-  backgroundColor: '#2D2F8E',
-  paddingHorizontal: 14,
-  paddingVertical: 9,
-  borderRadius: 10,
-  shadowColor: '#2D2F8E',
-  shadowOffset: { width: 0, height: 3 },
-  shadowOpacity: 0.3,
-  shadowRadius: 6,
-  elevation: 4,
-},
-staffListBtnText: {
-  color: '#FFFFFF',
-  fontSize: 12,
-  fontWeight: '700',
-  letterSpacing: 0.4,
-},
-  // Cards Row
-  cardsRow: {
     flexDirection: 'row',
-    paddingHorizontal: 12,
-    gap: 10,
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
   },
+  pageTitle: { fontSize: 28, fontWeight: '700', color: '#1A1A2E', letterSpacing: -0.5 },
+  pageSubtitle: { fontSize: 13, color: '#8A9BB0', marginTop: 2 },
+  staffListBtn: {
+    backgroundColor: '#2D2F8E',
+    paddingHorizontal: 14, paddingVertical: 9,
+    borderRadius: 10,
+    shadowColor: '#2D2F8E',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3, shadowRadius: 6, elevation: 4,
+  },
+  staffListBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700', letterSpacing: 0.4 },
+
+  cardsRow: { flexDirection: 'row', paddingHorizontal: 12, gap: 10 },
   card: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 14,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-    position: 'relative',
+    flex: 1, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 14,
+    shadowColor: '#000', shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.06, shadowRadius: 8, elevation: 3, position: 'relative',
   },
-  cardActive: {
-    borderWidth: 0,
-  },
+  cardActive: { borderWidth: 0 },
 
-  // Badge
-  badge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    marginBottom: 4,
-  },
-  badgeIn: {
-    backgroundColor: '#E8F5E9',
-  },
-  badgeOut: {
-    backgroundColor: '#FFF3E0',
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-  },
-  badgeTextIn: {
-    color: '#2E7D32',
-  },
-  badgeTextOut: {
-    color: '#E65100',
-  },
+  badge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginBottom: 4 },
+  badgeIn: { backgroundColor: '#E8F5E9' },
+  badgeOut: { backgroundColor: '#FFF3E0' },
+  badgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
+  badgeTextIn: { color: '#2E7D32' },
+  badgeTextOut: { color: '#E65100' },
 
-  // Card corner icon
-  cardCornerIcon: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-  },
+  cardCornerIcon: { position: 'absolute', top: 14, right: 14 },
+  cardTitle: { fontSize: 15, fontWeight: '600', color: '#1A1A2E', textAlign: 'center', marginTop: 6, marginBottom: 10 },
 
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1A1A2E',
-    textAlign: 'center',
-    marginTop: 6,
-    marginBottom: 10,
-  },
-
-  // QR Box (live or idle)
   qrBox: {
-    backgroundColor: '#1E3A5F',
-    borderRadius: 10,
-    height: 110,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-    overflow: 'hidden',
+    backgroundColor: '#1E3A5F', borderRadius: 10, height: 110,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 12, overflow: 'hidden',
   },
-  qrBoxOut: {
-    backgroundColor: '#1A3A30',
-  },
-  qrIdleContent: {
-    alignItems: 'center',
-    gap: 6,
-  },
+  qrBoxOut: { backgroundColor: '#1A3A30' },
+  qrIdleContent: { alignItems: 'center', gap: 6 },
   qrIdleIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 44, height: 44, borderRadius: 10,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  qrIdleIconText: {
-    fontSize: 22,
-    color: 'rgba(255,255,255,0.5)',
-  },
-  qrIdleHint: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.35)',
-    letterSpacing: 1,
-    fontWeight: '600',
-  },
+  qrIdleIconText: { fontSize: 22, color: 'rgba(255,255,255,0.5)' },
+  qrIdleHint: { fontSize: 10, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, fontWeight: '600' },
 
-  // Modal
   modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center', justifyContent: 'center', padding: 24,
   },
   modalCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    width: '100%',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 8},
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 12,
+    backgroundColor: '#FFFFFF', borderRadius: 20, width: '100%', overflow: 'hidden',
+    shadowColor: '#000', shadowOffset: {width: 0, height: 8}, shadowOpacity: 0.2, shadowRadius: 20, elevation: 12,
   },
   modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 16,
   },
-  modalHeaderIn: {
-    backgroundColor: '#2D2F8E',
-  },
-  modalHeaderOut: {
-    backgroundColor: '#1A3A30',
-  },
-  modalHeaderText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  modalHeaderIn: { backgroundColor: '#2D2F8E' },
+  modalHeaderOut: { backgroundColor: '#1A3A30' },
+  modalHeaderText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   modalCloseBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center',
   },
-  modalCloseBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  modalQRWrapper: {
-    alignItems: 'center',
-    paddingVertical: 28,
-    backgroundColor: '#FAFAFA',
-  },
-  modalMeta: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    gap: 4,
-  },
+  modalCloseBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  modalQRWrapper: { alignItems: 'center', paddingVertical: 28, backgroundColor: '#FAFAFA' },
+  modalMeta: { paddingHorizontal: 20, paddingBottom: 16, gap: 4 },
   modalMetaLabel: {
-    fontSize: 11,
-    color: '#8A9BB0',
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    marginTop: 8,
-    textTransform: 'uppercase',
+    fontSize: 11, color: '#8A9BB0', fontWeight: '600',
+    letterSpacing: 0.5, marginTop: 8, textTransform: 'uppercase',
   },
-  modalMetaValue: {
-    fontSize: 14,
-    color: '#1A1A2E',
-    fontWeight: '600',
-    fontFamily: 'monospace',
-  },
-  modalDoneBtn: {
-    marginHorizontal: 20,
-    marginBottom: 20,
-    borderRadius: 10,
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  modalDoneBtnIn: {
-    backgroundColor: '#2D2F8E',
-  },
-  modalDoneBtnOut: {
-    backgroundColor: '#1E3A5F',
-  },
-  modalDoneBtnText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
+  modalMetaValue: { fontSize: 14, color: '#1A1A2E', fontWeight: '600', fontFamily: 'monospace' },
+  modalDoneBtn: { marginHorizontal: 20, marginBottom: 20, borderRadius: 10, paddingVertical: 13, alignItems: 'center' },
+  modalDoneBtnIn: { backgroundColor: '#2D2F8E' },
+  modalDoneBtnOut: { backgroundColor: '#1E3A5F' },
+  modalDoneBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
 
-  // Generate button
   generateBtn: {
-    borderWidth: 1.5,
-    borderColor: '#D0D5DD',
-    borderRadius: 8,
-    paddingVertical: 9,
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
+    borderWidth: 1.5, borderColor: '#D0D5DD', borderRadius: 8,
+    paddingVertical: 9, alignItems: 'center', backgroundColor: '#F9FAFB',
   },
-  generateBtnActive: {
-    backgroundColor: '#2D2F8E',
-    borderColor: '#2D2F8E',
-  },
-  generateBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#444',
-  },
-  generateBtnTextActive: {
-    color: '#FFFFFF',
-  },
-  timerText: {
-    fontSize: 11,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginTop: 8,
-    letterSpacing: 0.3,
-  },
+  generateBtnActive: { backgroundColor: '#2D2F8E', borderColor: '#2D2F8E' },
+  generateBtnText: { fontSize: 13, fontWeight: '600', color: '#444' },
+  generateBtnTextActive: { color: '#FFFFFF' },
+  timerText: { fontSize: 11, fontWeight: '700', textAlign: 'center', marginTop: 8, letterSpacing: 0.3 },
 
-  // Logs
-  logsSection: {
-    marginTop: 24,
-    paddingHorizontal: 12,
-  },
+  logsSection: { marginTop: 24, paddingHorizontal: 12 },
   logsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginBottom: 12,
   },
-  logsTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1A1A2E',
-  },
-  logsActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  iconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
+  logsTitle: { fontSize: 20, fontWeight: '700', color: '#1A1A2E' },
+  logsActions: { flexDirection: 'row', gap: 8 },
   logsList: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
+    backgroundColor: '#FFFFFF', borderRadius: 16, overflow: 'hidden',
+    shadowColor: '#000', shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
   },
-  logItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  logAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logAvatarText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  logInfo: {
-    flex: 1,
-  },
-  logName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1A1A2E',
-    marginBottom: 3,
-  },
-  logSubRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  logRole: {
-    fontSize: 12,
-    color: '#8A9BB0',
-  },
-  logDot: {
-    fontSize: 12,
-    color: '#8A9BB0',
-  },
-  logStatus: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  logTime: {
-    fontSize: 11,
-    color: '#8A9BB0',
-    textAlign: 'right',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#F0F2F5',
-    marginHorizontal: 16,
-  },
+  logItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
+  logAvatar: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  logAvatarText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
+  logInfo: { flex: 1 },
+  logName: { fontSize: 14, fontWeight: '600', color: '#1A1A2E', marginBottom: 3 },
+  logSubRow: { flexDirection: 'row', alignItems: 'center' },
+  logRole: { fontSize: 12, color: '#8A9BB0' },
+  logDot: { fontSize: 12, color: '#8A9BB0' },
+  logStatus: { fontSize: 12, fontWeight: '700', letterSpacing: 0.3 },
+  logTime: { fontSize: 11, color: '#8A9BB0', textAlign: 'right' },
+  divider: { height: 1, backgroundColor: '#F0F2F5', marginHorizontal: 16 },
 
-  // Filter Modal
-  bottomSheetOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
+  bottomSheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   bottomSheet: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 20,
+    backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, paddingBottom: 40,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1, shadowRadius: 10, elevation: 20,
   },
-  sheetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  sheetTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1A1A2E',
-  },
+  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  sheetTitle: { fontSize: 18, fontWeight: '700', color: '#1A1A2E' },
   sheetCloseBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#F2F4F7',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: '#F2F4F7', alignItems: 'center', justifyContent: 'center',
   },
-  sheetCloseBtnText: {
-    fontSize: 14,
-    color: '#555',
-    fontWeight: '700',
-  },
-  filterSectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#8A9BB0',
-    marginBottom: 12,
-  },
-  filterOptionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
+  sheetCloseBtnText: { fontSize: 14, color: '#555', fontWeight: '700' },
+  filterSectionTitle: { fontSize: 14, fontWeight: '600', color: '#8A9BB0', marginBottom: 12 },
+  filterOptionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#F2F4F7',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: '#F2F4F7', borderWidth: 1, borderColor: '#E2E8F0',
   },
-  filterChipActive: {
-    backgroundColor: '#3D5AFE',
-    borderColor: '#3D5AFE',
-  },
-  filterChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#555',
-  },
-  filterChipTextActive: {
-    color: '#FFFFFF',
-  },
-  emptyLogs: {
-    padding: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyLogsText: {
-    color: '#8A9BB0',
-    fontSize: 14,
-    fontWeight: '500',
-  },
+  filterChipActive: { backgroundColor: '#3D5AFE', borderColor: '#3D5AFE' },
+  filterChipText: { fontSize: 13, fontWeight: '600', color: '#555' },
+  filterChipTextActive: { color: '#FFFFFF' },
+  emptyLogs: { padding: 32, alignItems: 'center', justifyContent: 'center' },
+  emptyLogsText: { color: '#8A9BB0', fontSize: 14, fontWeight: '500' },
 });
 
 export default AttendanceScreen;

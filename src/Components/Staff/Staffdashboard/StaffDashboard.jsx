@@ -11,8 +11,10 @@ import {
   Modal,
   Alert,
   ActivityIndicator,
+  TextInput,
 } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from "../../../lib/supabase";
 
@@ -179,6 +181,40 @@ export default function StaffHomePage() {
   const [shiftActive, setShiftActive] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Leave
+  const [leaveModalVisible, setLeaveModalVisible] = useState(false);
+  const [leaveFrom, setLeaveFrom] = useState(new Date());
+  const [leaveTo, setLeaveTo] = useState(new Date());
+  const [leaveReason, setLeaveReason] = useState('');
+  const [leaveSaving, setLeaveSaving] = useState(false);
+  const [myLeaves, setMyLeaves] = useState([]);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+  
+
+ const openPicker = (target, mode) => {
+  const currentValue = target === 'from' ? leaveFrom : leaveTo;
+  DateTimePickerAndroid.open({
+    value: currentValue,
+    mode: mode,
+    is24Hour: false,
+    onValueChange: (event, selectedDate) => {  // ← two params: event first, then date
+      if (!selectedDate) return;
+      if (mode === 'date') {
+        const base = target === 'from' ? leaveFrom : leaveTo;
+        const merged = new Date(selectedDate);
+        merged.setHours(base.getHours(), base.getMinutes());
+        if (target === 'from') setLeaveFrom(merged);
+        else setLeaveTo(merged);
+      } else {
+        if (target === 'from') setLeaveFrom(selectedDate);
+        else setLeaveTo(selectedDate);
+      }
+    },
+    onDismiss: () => {},
+  });
+};
+  
+
   // Parse user info
   const displayName = profile?.full_name?.split(' ')[0] || profile?.username || "Staff";
   let fullDisplayName = profile?.full_name || profile?.username || 'Staff Member';
@@ -242,7 +278,27 @@ export default function StaffHomePage() {
     }
   };
 
+  const loadMyLeaves = async () => {
+    if (!profile?.id) return;
+    setLeaveLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('leave_requests')
+        .select('id, from_date, to_date, reason, status, requested_at')
+        .eq('staff_id', profile.id)
+        .order('requested_at', { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      setMyLeaves(data || []);
+    } catch (e) {
+      console.warn('loadMyLeaves error:', e.message);
+    } finally {
+      setLeaveLoading(false);
+    }
+  };
+
   useFocusEffect(useCallback(() => { loadData(); }, [profile?.id]));
+  useFocusEffect(useCallback(() => { loadMyLeaves(); }, [profile?.id]));
 
   const formatINR = (v) => '₹' + Math.round(v || 0).toLocaleString('en-IN');
 
@@ -261,9 +317,122 @@ export default function StaffHomePage() {
     );
   };
 
+  const resetLeaveForm = () => {
+    setLeaveFrom(new Date());
+    setLeaveTo(new Date());
+    setLeaveReason('');
+    
+  };
+
+  const submitLeave = async () => {
+    if (!profile?.id) return;
+    
+    if (leaveTo.getTime() < leaveFrom.getTime()) {
+      Alert.alert('Invalid Range', 'To date and time must be the same or after From.');
+      return;
+    }
+
+    setLeaveSaving(true);
+    try {
+      const { error } = await supabase.from('leave_requests').insert({
+        staff_id: profile.id,
+        from_date: leaveFrom.toISOString(),
+        to_date: leaveTo.toISOString(),
+        reason: leaveReason.trim(),
+        status: 'pending',
+      });
+      if (error) throw error;
+      Alert.alert('✅ Leave Applied', 'Your leave request has been sent for admin approval.');
+      setLeaveModalVisible(false);
+      resetLeaveForm();
+      loadMyLeaves();
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setLeaveSaving(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+
+      {/* Apply Leave Modal */}
+      <Modal visible={leaveModalVisible} transparent animationType="fade" onRequestClose={() => setLeaveModalVisible(false)}>
+        <View style={styles.leaveOverlay}>
+          <View style={styles.leaveCard}>
+            <View style={styles.leaveHeader}>
+              <Text style={styles.leaveTitle}>Apply Leave</Text>
+              <TouchableOpacity onPress={() => setLeaveModalVisible(false)} style={styles.leaveCloseBtn}>
+                <Text style={styles.leaveCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.leaveHint}>Select exact date and time for your leave.</Text>
+
+            <Text style={styles.leaveLabel}>FROM</Text>
+            <View style={styles.pickerRow}>
+              <TouchableOpacity 
+                style={styles.pickerBtn} 
+                onPress={() => openPicker('from', 'date')}
+              >
+                <Text style={styles.pickerBtnText}>{leaveFrom.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.pickerBtn} 
+                onPress={() => openPicker('from', 'time')}
+              >
+                <Text style={styles.pickerBtnText}>{leaveFrom.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.leaveLabel}>TO</Text>
+            <View style={styles.pickerRow}>
+              <TouchableOpacity 
+                style={styles.pickerBtn} 
+                onPress={() => openPicker('to', 'date')}
+              >
+                <Text style={styles.pickerBtnText}>{leaveTo.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.pickerBtn} 
+                onPress={() => openPicker('to', 'time')}
+              >
+                <Text style={styles.pickerBtnText}>{leaveTo.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</Text>
+              </TouchableOpacity>
+            </View>
+            
+
+            <Text style={styles.leaveLabel}>REASON (optional)</Text>
+            <TextInput
+              value={leaveReason}
+              onChangeText={setLeaveReason}
+              placeholder="e.g. Medical, personal work..."
+              placeholderTextColor="#94A3B8"
+              style={[styles.leaveInput, { height: 84, textAlignVertical: 'top' }]}
+              editable={!leaveSaving}
+              multiline
+            />
+
+            <View style={styles.leaveFooter}>
+              <TouchableOpacity
+                style={styles.leaveCancelBtn}
+                onPress={() => { setLeaveModalVisible(false); resetLeaveForm(); }}
+                disabled={leaveSaving}
+              >
+                <Text style={styles.leaveCancelText}>CANCEL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.leaveSubmitBtn, leaveSaving && { opacity: 0.7 }]}
+                onPress={submitLeave}
+                disabled={leaveSaving}
+              >
+                {leaveSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.leaveSubmitText}>SUBMIT</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Profile Dropdown Modal */}
       <Modal
@@ -315,10 +484,10 @@ export default function StaffHomePage() {
           <Text style={styles.headerTitleText}>Vishnu Mobile Shop</Text>
         </View>
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.iconBtn}>
+         {/* <TouchableOpacity style={styles.iconBtn}>
             <BellIcon size={18} color="#fff" />
             <View style={styles.badge} />
-          </TouchableOpacity>
+          </TouchableOpacity> */}
           <TouchableOpacity
             style={styles.iconBtn}
             onPress={() => setProfileMenuVisible(true)}
@@ -410,6 +579,45 @@ export default function StaffHomePage() {
             </View>
             <ChevronRightIcon size={16} color="#94A3B8" />
           </TouchableOpacity>
+        </View>
+
+        {/* Leave Requests */}
+        <View style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>Leave</Text>
+            <TouchableOpacity onPress={() => setLeaveModalVisible(true)} activeOpacity={0.85}>
+              <Text style={styles.leaveApplyLink}>+ Apply</Text>
+            </TouchableOpacity>
+          </View>
+
+          {leaveLoading ? (
+            <ActivityIndicator color="#2D2F8E" style={{ paddingVertical: 14 }} />
+          ) : myLeaves.length === 0 ? (
+            <Text style={{ textAlign: 'center', color: '#94A3B8', paddingVertical: 10, fontSize: 12 }}>
+              No leave requests yet
+            </Text>
+          ) : (
+            myLeaves.map((l, idx) => (
+              <View key={l.id} style={[styles.leaveRow, idx === myLeaves.length - 1 && { borderBottomWidth: 0 }]}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={styles.leaveRowDates}>
+                    {new Date(l.from_date).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} → 
+                  </Text>
+                  <Text style={styles.leaveRowDates}>
+                    {new Date(l.to_date).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                  {!!l.reason && <Text style={styles.leaveRowReason}>{l.reason}</Text>}
+                </View>
+                <View style={[styles.leaveStatusPill,
+                  l.status === 'approved' ? styles.leaveStatusApproved :
+                  l.status === 'rejected' ? styles.leaveStatusRejected :
+                  styles.leaveStatusPending
+                ]}>
+                  <Text style={styles.leaveStatusText}>{String(l.status).toUpperCase()}</Text>
+                </View>
+              </View>
+            ))
+          )}
         </View>
 
         {/* Recent Sales */}
@@ -695,6 +903,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
   },
+
+  // Leave
+  leaveApplyLink: { color: '#2D2F8E', fontSize: 12, fontWeight: '800' },
+  leaveRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  leaveRowDates: { fontSize: 13, fontWeight: '800', color: '#1E293B' },
+  leaveRowReason: { fontSize: 11, color: '#64748B', marginTop: 2 },
+  leaveStatusPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
+  leaveStatusPending: { backgroundColor: 'rgba(245,158,11,0.12)' },
+  leaveStatusApproved: { backgroundColor: 'rgba(34,197,94,0.12)' },
+  leaveStatusRejected: { backgroundColor: 'rgba(239,68,68,0.12)' },
+  leaveStatusText: { fontSize: 10, fontWeight: '900', color: '#1E293B', letterSpacing: 0.8 },
+
+  leaveOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', padding: 22 },
+  leaveCard: { backgroundColor: '#fff', borderRadius: 18, padding: 18 },
+  leaveHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  leaveTitle: { fontSize: 16, fontWeight: '900', color: '#1E293B' },
+  leaveCloseBtn: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+  leaveCloseText: { fontSize: 14, fontWeight: '900', color: '#64748B' },
+  leaveHint: { fontSize: 11, color: '#64748B', marginBottom: 12 },
+  leaveLabel: { fontSize: 10, fontWeight: '800', color: '#94A3B8', letterSpacing: 1.1, marginTop: 8, marginBottom: 6 },
+  leaveInput: {
+    backgroundColor: '#F8FAFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    color: '#1E293B',
+    fontSize: 13,
+  },
+  pickerRow: { flexDirection: 'row', gap: 8 },
+  pickerBtn: {
+    flex: 1, backgroundColor: '#F8FAFF', borderWidth: 1.5, borderColor: '#E2E8F0',
+    borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center'
+  },
+  pickerBtnText: { color: '#1E293B', fontSize: 13, fontWeight: '600' },
+  leaveFooter: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  leaveCancelBtn: { flex: 1, borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  leaveCancelText: { fontSize: 12, fontWeight: '900', color: '#64748B', letterSpacing: 0.6 },
+  leaveSubmitBtn: { flex: 1, backgroundColor: '#2D2F8E', borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  leaveSubmitText: { fontSize: 12, fontWeight: '900', color: '#fff', letterSpacing: 0.6 },
 
   // Bottom Nav
   bottomNav: {

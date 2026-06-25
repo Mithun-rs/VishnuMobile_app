@@ -9,10 +9,15 @@ import {
   ScrollView,
   Switch,
   Alert,
+  Modal,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { supabase } from '../../../lib/supabase';
 import Svg2, { Path, Circle, Line, Polyline, Rect } from 'react-native-svg';
 import BackArrow from '../../../assets/back-arrow.svg';
+import { APP_NAME, APP_VERSION, LOW_STOCK_ALERT_THRESHOLD } from '../../../constants';
 
 const BLUE = '#2D2F8E';
 
@@ -125,6 +130,37 @@ export default function SettingsScreen() {
   const [soundEnabled, setSoundEnabled]     = useState(false);
   const [autoPrint, setAutoPrint]           = useState(false);
 
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  const handleChangePassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      Alert.alert('Invalid Password', 'Password must be at least 6 characters long.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Mismatch', 'Passwords do not match.');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      
+      Alert.alert('Success', 'Your password has been successfully updated.');
+      setPasswordModalVisible(false);
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Failed to update password.');
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   const handleLogout = () => {
     Alert.alert(
       'Logout',
@@ -154,6 +190,47 @@ export default function SettingsScreen() {
         <View style={{ width: 36 }} />
       </View>
 
+      <Modal visible={passwordModalVisible} transparent animationType="slide" onRequestClose={() => setPasswordModalVisible(false)}>
+        <View style={s.overlay}>
+          <View style={s.sheet}>
+            <View style={s.handle} />
+            <Text style={s.sheetTitle}>Change Password</Text>
+            <Text style={s.sheetSub}>Enter your new password below.</Text>
+
+            <Text style={s.lbl}>NEW PASSWORD</Text>
+            <TextInput 
+              style={s.inp} 
+              placeholder="Min 6 characters" 
+              placeholderTextColor="#bbb" 
+              secureTextEntry
+              value={newPassword}
+              onChangeText={setNewPassword}
+              editable={!changingPassword}
+            />
+
+            <Text style={s.lbl}>CONFIRM PASSWORD</Text>
+            <TextInput 
+              style={s.inp} 
+              placeholder="Confirm new password" 
+              placeholderTextColor="#bbb" 
+              secureTextEntry
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              editable={!changingPassword}
+            />
+
+            <View style={s.btnRow}>
+              <TouchableOpacity style={s.cancelBtn} onPress={() => setPasswordModalVisible(false)} disabled={changingPassword}>
+                <Text style={s.cancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.saveBtn, changingPassword && { opacity: 0.7 }]} onPress={handleChangePassword} disabled={changingPassword}>
+                {changingPassword ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.saveTxt}>Update Password</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
 
         {/* Profile Card */}
@@ -176,7 +253,7 @@ export default function SettingsScreen() {
           <SettingLink
             icon={<StoreIcon />}
             label="Shop Name"
-            subtitle="Vishnu Mobile Shop"
+            subtitle={APP_NAME}
             onPress={() => Alert.alert('Shop Name', 'Edit shop name — coming soon!')}
           />
           <View style={s.sep} />
@@ -209,7 +286,7 @@ export default function SettingsScreen() {
           <SettingToggle
             icon={<BellIcon color="#f59e0b" />}
             label="Low Stock Alerts"
-            subtitle="Alert when stock < 5 units"
+            subtitle={`Alert when stock < ${LOW_STOCK_ALERT_THRESHOLD} units`}
             value={lowStockAlert}
             onToggle={setLowStockAlert}
           />
@@ -249,7 +326,7 @@ export default function SettingsScreen() {
             icon={<LockIcon />}
             label="Change Password"
             subtitle="Update your login password"
-            onPress={() => Alert.alert('Change Password', 'Feature coming soon!')}
+            onPress={() => setPasswordModalVisible(true)}
           />
           <View style={s.sep} />
           <SettingLink
@@ -266,7 +343,7 @@ export default function SettingsScreen() {
           <SettingLink
             icon={<InfoIcon />}
             label="App Version"
-            subtitle="v1.0.0 · Vishnu Mobile Shop"
+            subtitle={`v${APP_VERSION} · ${APP_NAME}`}
             onPress={() => {}}
           />
         </View>
@@ -283,7 +360,7 @@ export default function SettingsScreen() {
           />
         </View>
 
-        <Text style={s.footer}>Vishnu Mobile Shop · v1.0.0</Text>
+        <Text style={s.footer}>{APP_NAME} · v{APP_VERSION}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -363,4 +440,18 @@ const s = StyleSheet.create({
   rowSub: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
 
   footer: { textAlign: 'center', color: '#94A3B8', fontSize: 11, marginTop: 8 },
+
+  // Modal / Sheet
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 },
+  handle: { width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  sheetTitle: { fontSize: 20, fontWeight: '900', color: '#1E293B', marginBottom: 4 },
+  sheetSub: { fontSize: 13, color: '#94A3B8', marginBottom: 16 },
+  lbl: { fontSize: 10, color: '#94A3B8', fontWeight: '700', letterSpacing: 1.2, marginBottom: 6, marginTop: 14 },
+  inp: { backgroundColor: '#F8F9FF', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: '#1E293B', borderWidth: 1, borderColor: '#E2E8F0' },
+  btnRow: { flexDirection: 'row', gap: 12, marginTop: 24 },
+  cancelBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0' },
+  cancelTxt: { color: '#64748B', fontWeight: '700', fontSize: 14 },
+  saveBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', backgroundColor: BLUE },
+  saveTxt: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });

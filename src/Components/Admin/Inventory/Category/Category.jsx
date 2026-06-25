@@ -41,10 +41,11 @@ export default function InventoryScreen() {
   const navigation  = useNavigation();
   const { signOut } = useAuth();
 
-  const [categories, setCategories]           = useState([]);
-  const [productCounts, setProductCounts]     = useState({});
-  const [loading, setLoading]                 = useState(true);
+  const [categories, setCategories]       = useState([]);
+  const [brandCounts, setBrandCounts]      = useState({});
+  const [loading, setLoading]              = useState(true);
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
+
 
   const handleLogout = () => {
     setProfileMenuVisible(false);
@@ -71,20 +72,20 @@ export default function InventoryScreen() {
         .order('name');
       if (catErr) throw catErr;
 
-      // Fetch product counts grouped by category
-      const { data: products, error: prodErr } = await supabase
-        .from('products')
-        .select('category');
-      if (prodErr) throw prodErr;
+      // Fetch brand counts grouped by category_id
+      const { data: brands, error: brandsErr } = await supabase
+        .from('brands')
+        .select('category_id');
+      if (brandsErr) throw brandsErr;
 
-      // Build count map: { categoryName: count }
+      // Build count map: { categoryId: brandCount }
       const countMap = {};
-      (products || []).forEach(p => {
-        if (p.category) countMap[p.category] = (countMap[p.category] || 0) + 1;
+      (brands || []).forEach(b => {
+        if (b.category_id) countMap[b.category_id] = (countMap[b.category_id] || 0) + 1;
       });
 
       setCategories(cats || []);
-      setProductCounts(countMap);
+      setBrandCounts(countMap);
     } catch (e) {
       console.error('loadAll error:', e.message);
       Alert.alert('Error', 'Failed to load categories.');
@@ -92,6 +93,7 @@ export default function InventoryScreen() {
       setLoading(false);
     }
   };
+
 
   const handleDelete = (cat) => {
     Alert.alert(
@@ -166,11 +168,7 @@ export default function InventoryScreen() {
           <Text style={styles.mainTitle}>Inventory</Text>
         </View>
 
-        {/* ADD NEW PRODUCT BUTTON */}
-        <TouchableOpacity style={styles.addBtn} onPress={() => navigation.navigate('AddProduct')}>
-          <Text style={styles.addIcon}>＋</Text>
-          <Text style={styles.addText}>Add New Product</Text>
-        </TouchableOpacity>
+
 
         {/* CATEGORIES HEADER */}
         <View style={styles.row}>
@@ -201,7 +199,7 @@ export default function InventoryScreen() {
               <TouchableOpacity
                 key={cat.id}
                 style={styles.card}
-                onPress={() => navigation.navigate('Products', { categoryId: cat.id })}
+                onPress={() => navigation.navigate('Brands', { categoryId: cat.id, categoryName: cat.name, categoryIcon: cat.icon })}
                 onLongPress={() => handleDelete(cat)}
                 delayLongPress={500}
                 activeOpacity={0.8}
@@ -211,8 +209,9 @@ export default function InventoryScreen() {
                 </View>
                 <Text style={styles.cardTitle} numberOfLines={1}>{cat.name}</Text>
                 <Text style={styles.cardSub}>
-                  {productCounts[cat.name] || 0} Products
+                  {brandCounts[cat.id] || 0} Brands
                 </Text>
+
                 {cat.description ? (
                   <Text style={styles.cardDesc} numberOfLines={1}>{cat.description}</Text>
                 ) : null}
@@ -268,7 +267,7 @@ const styles = StyleSheet.create({
 
   section: { paddingHorizontal: 16, marginTop: 10 },
   subTitle: { fontSize: 10, color: '#999', letterSpacing: 2 },
-  mainTitle: { fontSize: 28, fontWeight: 'bold', marginTop: 5 },
+  mainTitle: { fontSize: 28, fontWeight: 'bold', marginTop: 5,color:'#000000ff' },
 
   addBtn: {
     backgroundColor: '#2D2F8E', margin: 16, padding: 14,
@@ -278,7 +277,7 @@ const styles = StyleSheet.create({
   addText: { color: '#fff', fontSize: 14, fontWeight: '600' },
 
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginTop: 10 },
-  catTitle: { fontSize: 18, fontWeight: 'bold' },
+  catTitle: { fontSize: 18, fontWeight: 'bold',color:'#000000ff' },
   catCount: { fontSize: 14, color: '#94A3B8', fontWeight: '500' },
   addCategory: { color: '#2D2F8E', fontSize: 13, fontWeight: '700' },
 

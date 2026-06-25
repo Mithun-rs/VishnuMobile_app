@@ -8,6 +8,7 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS full_name  TEXT DEFAULT '';
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS phone      TEXT DEFAULT '';
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS email      TEXT DEFAULT '';
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_bg  TEXT DEFAULT '#EEF0FF';
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS salary     NUMERIC(12,2);
 
 -- Drop old role check that only allowed admin/staff, re-add with manager
 ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
@@ -59,6 +60,11 @@ ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS staff_id   UUID REFERENCES 
 ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS check_type TEXT DEFAULT 'CHECK_IN'
   CHECK (check_type IN ('CHECK_IN', 'CHECK_OUT'));
 ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS session_id TEXT DEFAULT '';
+
+-- ── 6. ATTENDANCE LOGS: salary fields (late-based deduction) ─────────
+ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS late_minutes     INTEGER DEFAULT 0;
+ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS deduction_amount NUMERIC(12,2) DEFAULT 0;
+ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS payable_amount   NUMERIC(12,2);
 
 -- ════════════════════════════════════════════════════════════════════
 -- ✅ All columns added! App should work now.

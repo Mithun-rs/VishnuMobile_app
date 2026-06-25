@@ -18,6 +18,7 @@ import Share from 'react-native-share';
 import * as XLSX from 'xlsx';
 import RNFS from 'react-native-fs';
 import { generateAndSharePDF } from '../../../utils/exportUtils';
+import { ESTIMATED_PROFIT_MARGIN } from '../../../constants';
 
 // ─── Install dependencies ─────────────────────────────────────────────────────
 // npm install react-native-svg
@@ -56,7 +57,7 @@ const IconPlaceholder = ({
 );
 
 // ─── Constants & Fallbacks ────────────────────────────────────────────────────
-const PROFIT_MARGIN = 0.15; // 15% estimated profit
+// PROFIT_MARGIN is imported from src/constants/index.js as ESTIMATED_PROFIT_MARGIN
 
 // These are fallback mock data structures in case Supabase errors out.
 // Mostly useful just so the UI doesn't crash if uninitialized.
@@ -335,7 +336,7 @@ const ReportsDashboardScreen = () => {
     let totalSales = 0;
     validOrders.forEach(o => {
       const p = parseFloat(o.total_payable) || 0;
-      const profit = p * PROFIT_MARGIN;
+      const profit = p * ESTIMATED_PROFIT_MARGIN;
       totalSales += p;
 
       const oDate = new Date(o.created_at);
@@ -365,7 +366,7 @@ const ReportsDashboardScreen = () => {
       bars: formattedBars,
       stats: {
         sales: formatINR(totalSales),
-        profit: formatINR(totalSales * PROFIT_MARGIN),
+        profit: formatINR(totalSales * ESTIMATED_PROFIT_MARGIN),
         salesPct: '+11%', // static growth placeholder for demo
         profitPct: '+11%'
       }
@@ -709,6 +710,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2D2F8E', borderRadius: 10,
     width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
     position: 'relative',
+    opacity:0
   },
   bellBadge: {
     position: 'absolute', top: -3, right: -3,

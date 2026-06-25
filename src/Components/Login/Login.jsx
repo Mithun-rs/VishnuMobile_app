@@ -17,6 +17,7 @@ import Eye from '../../assets/eye.svg';
 import styles from './Login.styles';
 import { supabase } from '../../lib/supabase';
 import RegisterModal from './Register';
+import { ADMIN_ROLES } from '../../constants';
 
 const LoginScreen = () => {
   const [username, setUsername]             = useState('');
@@ -87,11 +88,7 @@ const LoginScreen = () => {
       const dbRole = profileData?.role;
 
       // Admins are always approved; only block non-approved staff
-      const isAdmin = 
-        dbRole === 'admin' || 
-        dbRole === 'attendance_admin' || 
-        metaRole === 'admin' || 
-        metaRole === 'attendance_admin';
+      const isAdmin = ADMIN_ROLES.includes(dbRole) || ADMIN_ROLES.includes(metaRole);
         
       const isApproved = profileData?.is_approved === true;
 
@@ -215,7 +212,7 @@ const LoginScreen = () => {
 
           <View style={styles.footer}>
             <Text style={styles.footerText}>
-              © 2024 Vishnu Mobile Shop Inventory Management System
+              © {new Date().getFullYear()} Vishnu Mobile Shop Inventory Management System
             </Text>
             <View style={styles.footerLinks}>
               <TouchableOpacity><Text style={styles.footerLink}>Privacy Policy</Text></TouchableOpacity>

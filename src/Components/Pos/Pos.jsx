@@ -1,15 +1,16 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo, memo } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
-  ScrollView,
+  FlatList,
   TextInput,
-  Image,
   ActivityIndicator,
+  Alert,
 } from "react-native";
+import { CachedImage } from "../../lib/imageUtils";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
@@ -17,52 +18,114 @@ import Filter from '../../assets/filter_icon.svg';
 import Cart from '../../assets/cart.svg';
 import Search from '../../assets/search-icon.svg';
 
-const statusColor = (status) => {
-  if (status === 'IN STOCK')  return '#3d5af1';
-  if (status === 'LOW STOCK') return '#ef4444';
-  return '#999';
-};
+// Module-level cache — survives tab switches, cleared after 2 minutes
+let _posCache = null;
+let _posCacheTime = 0;
+const POS_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+
+
+// ── Memoised product card — only re-renders when its own props change ──────────
+const ProductCard = memo(({ product, added, onAdd, onPress }) => (
+  <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={onPress}>
+    <CachedImage
+      uri={product.image}
+      style={styles.productImage}
+      resizeMode="cover"
+      thumbWidth={300}
+      thumbHeight={300}
+      fallback={<Text style={styles.noImageIcon}>🖼️</Text>}
+    />
+    <View style={styles.cardBody}>
+      <Text style={styles.skuText}>{product.sku}</Text>
+      <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
+      <View style={styles.priceRow}>
+        <View>
+          <Text style={styles.retailLabel}>Price</Text>
+          <Text style={styles.priceText}>
+            {product.currency || '₹'}{Number(product.price).toFixed(2)}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.addBtn, added && styles.addBtnAdded]}
+          onPress={onAdd}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.addBtnText}>{added ? '✓' : '+'}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </TouchableOpacity>
+));
 
 export default function PosScreen() {
   const navigation = useNavigation();
-  const [search, setSearch]               = useState("");
-  const [activeCategory, setActiveCategory] = useState("All");
-  const [showStockFilters, setShowStockFilters] = useState(false);
-  const [stockFilter, setStockFilter]     = useState("All");
-  const [cartCount, setCartCount]         = useState(0);
-  const [addedIds, setAddedIds]           = useState({});
-  const [allProducts, setAllProducts]     = useState([]);
-  const [categories, setCategories]       = useState(["All"]);
-  const [loading, setLoading]             = useState(true);
+  const [search, setSearch]                   = useState("");
+  const [activeBrand, setActiveBrand]         = useState(null);
+  const [showBrandFilter, setShowBrandFilter] = useState(false);
+  const [cartCount, setCartCount]             = useState(0);
+  const [addedIds, setAddedIds]               = useState({});
+  const [allProducts, setAllProducts]         = useState([]);
+  const [brands, setBrands]                   = useState([]);
+  const [loading, setLoading]                 = useState(true);
 
   useFocusEffect(
     useCallback(() => {
-      loadAll();
+      loadAll(); // Always reload on focus so newly added products appear immediately
     }, [])
   );
 
+  // Very cheap: reads cart from AsyncStorage only
+  const refreshCartCount = async () => {
+    try {
+      const raw  = await AsyncStorage.getItem('cart');
+      const cart = raw ? JSON.parse(raw) : [];
+      setCartCount(cart.reduce((s, i) => s + i.qty, 0));
+    } catch (_) {}
+  };
+
+  // Full data load — runs once on first open, then served from cache
   const loadAll = async () => {
+    // ── Serve from cache if fresh ───────────────────────────────────
+    if (_posCache && (Date.now() - _posCacheTime) < POS_CACHE_TTL) {
+      setAllProducts(_posCache.products);
+      setBrands(_posCache.brands);
+      setLoading(false);
+      await refreshCartCount();
+      return;
+    }
+
     setLoading(true);
     try {
-      // Fetch only available products (not OUT OF STOCK) from Supabase
-      const { data: products, error } = await supabase
-        .from('products')
-        .select('*')
-        .neq('status', 'OUT OF STOCK')
-        .eq('available', true)
-        .order('name');
+      // All three requests fire in parallel — no sequential waiting
+      const [prodRes, brandRes, cartRaw] = await Promise.all([
+        supabase
+          .from('products')
+          // Only the columns POS needs — skips description, imei, metadata, etc.
+          .select('id, name, sku, price, currency, "stockQty", image, brand_id, category')
+          .eq('available', true)
+          .order('name'),
+        supabase
+          .from('brands')
+          .select('id, name')
+          .order('name'),
+        AsyncStorage.getItem('cart'),
+      ]);
 
-      if (error) throw error;
-      setAllProducts(products || []);
+      if (prodRes.error)  throw prodRes.error;
+      if (brandRes.error) throw brandRes.error;
 
-      // Build categories from product list
-      const cats = ['All', ...new Set((products || []).map(p => p.category).filter(Boolean))];
-      setCategories(cats);
+      const products = prodRes.data  || [];
+      const brands   = brandRes.data || [];
 
-      // Cart count from AsyncStorage
-      const cartData = await AsyncStorage.getItem('cart');
-      const cart     = cartData ? JSON.parse(cartData) : [];
-      setCartCount(cart.reduce((sum, i) => sum + i.qty, 0));
+      // Store in cache
+      _posCache = { products, brands };
+      _posCacheTime = Date.now();
+
+      setAllProducts(products);
+      setBrands(brands);
+
+      const cart = cartRaw ? JSON.parse(cartRaw) : [];
+      setCartCount(cart.reduce((s, i) => s + i.qty, 0));
     } catch (e) {
       console.error('POS loadAll error:', e.message);
     } finally {
@@ -70,26 +133,138 @@ export default function PosScreen() {
     }
   };
 
+
   const handleAddToCart = async (product) => {
     try {
-      const data   = await AsyncStorage.getItem('cart');
-      const cart   = data ? JSON.parse(data) : [];
-      const idx    = cart.findIndex(i => i.id === product.id);
+      const raw  = await AsyncStorage.getItem('cart');
+      const cart = raw ? JSON.parse(raw) : [];
+      const idx  = cart.findIndex(i => i.id === product.id);
+
+      const currentQty     = idx >= 0 ? cart[idx].qty : 0;
+      const availableStock = product.stockQty ?? 0;
+
+      if (currentQty >= availableStock) {
+        Alert.alert('Stock Limit', `Only ${availableStock} in stock.`);
+        return;
+      }
+
       if (idx >= 0) { cart[idx].qty += 1; }
       else          { cart.push({ ...product, qty: 1 }); }
+
       await AsyncStorage.setItem('cart', JSON.stringify(cart));
-      setCartCount(cart.reduce((sum, i) => sum + i.qty, 0));
+      setCartCount(cart.reduce((s, i) => s + i.qty, 0));
       setAddedIds(prev => ({ ...prev, [product.id]: true }));
       setTimeout(() => setAddedIds(prev => ({ ...prev, [product.id]: false })), 600);
-    } catch (e) {}
+    } catch (_) {}
   };
 
-  const filtered = allProducts.filter(p => {
-    const matchCat    = activeCategory === 'All' || p.category === activeCategory;
-    const matchStock  = stockFilter === 'All' || p.status === stockFilter;
-    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase());
-    return matchCat && matchStock && matchSearch;
-  });
+  // Recomputes only when allProducts changes
+  const stockPerBrand = useMemo(() => {
+    const map = {};
+    allProducts.forEach(p => {
+      if (!p.brand_id) return;
+      if (!map[p.brand_id]) map[p.brand_id] = { count: 0, totalStock: 0 };
+      map[p.brand_id].count      += 1;
+      map[p.brand_id].totalStock += (p.stockQty ?? 0);
+    });
+    return map;
+  }, [allProducts]);
+
+  // Recomputes only when allProducts / activeBrand / search changes
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return allProducts.filter(p => {
+      const matchBrand  = !activeBrand || p.brand_id === activeBrand;
+      const matchSearch = !q || p.name.toLowerCase().includes(q);
+      return matchBrand && matchSearch;
+    });
+  }, [allProducts, activeBrand, search]);
+
+  const activeBrandName = useMemo(
+    () => activeBrand ? (brands.find(b => b.id === activeBrand)?.name || '') : '',
+    [brands, activeBrand]
+  );
+
+  // Rendered once above the product grid — search, filter chips, brand panel
+  const ListHeader = (
+    <>
+      <View style={styles.searchRow}>
+        <View style={styles.searchBox}>
+          <Search width={20} height={20} fill="#2D2F8E" stroke="#2D2F8E" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search products..."
+            placeholderTextColor="#aaa"
+            value={search}
+            onChangeText={setSearch}
+          />
+        </View>
+        <TouchableOpacity
+          style={[styles.filterBtn, showBrandFilter && { borderColor: '#2D2F8E', backgroundColor: '#EEF0FF' }]}
+          onPress={() => setShowBrandFilter(v => !v)}
+        >
+          <Filter
+            width={20} height={20}
+            fill={showBrandFilter ? '#2D2F8E' : '#1a2e6c'}
+            stroke={showBrandFilter ? '#2D2F8E' : '#1a2e6c'}
+          />
+        </TouchableOpacity>
+      </View>
+
+      {activeBrand && (
+        <View style={styles.activeFilterRow}>
+          <TouchableOpacity style={styles.activeFilterChip} onPress={() => setActiveBrand(null)}>
+            <Text style={styles.activeFilterTxt}>🏷️ {activeBrandName}  ✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {showBrandFilter && (
+        <View style={styles.filterPanel}>
+          <Text style={styles.filterSectionLabel}>FILTER BY BRAND</Text>
+          <FlatList
+            horizontal
+            data={[{ id: null, name: 'All Brands' }, ...brands]}
+            keyExtractor={b => String(b.id)}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.brandChipRow}
+            renderItem={({ item: brand }) => {
+              const info     = brand.id ? (stockPerBrand[brand.id] || { count: 0, totalStock: 0 }) : null;
+              const isActive = activeBrand === brand.id;
+              return (
+                <TouchableOpacity
+                  style={[styles.brandChip, isActive && styles.brandChipActive]}
+                  onPress={() => { setActiveBrand(brand.id); setShowBrandFilter(false); }}
+                >
+                  {brand.id === null ? (
+                    <View>
+                      <Text style={[styles.brandChipTxt, isActive && styles.brandChipTxtActive]}>All Brands</Text>
+                      <Text style={[styles.brandChipStock, isActive && styles.brandChipStockActive]}>
+                        {allProducts.length} models
+                      </Text>
+                    </View>
+                  ) : (
+                    <View>
+                      <Text style={[styles.brandChipTxt, isActive && styles.brandChipTxtActive]}>{brand.name}</Text>
+                      <View style={styles.brandStockRow}>
+                        <Text style={[styles.brandChipStock, isActive && styles.brandChipStockActive]}>
+                          {info.count} model{info.count !== 1 ? 's' : ''}
+                        </Text>
+                        <View style={[styles.stockDot, { backgroundColor: info.totalStock > 0 ? '#22c55e' : '#ef4444' }]} />
+                        <Text style={[styles.brandChipStock, isActive && styles.brandChipStockActive]}>
+                          {info.totalStock} in stock
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
+      )}
+    </>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -100,16 +275,14 @@ export default function PosScreen() {
           <View style={styles.headerDot} />
           <Text style={styles.headerTitleText}>POS — Quick Sale</Text>
         </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('Cart')}>
-            <Cart width={18} height={18} fill="#fff" stroke="#fff" />
-            {cartCount > 0 && (
-              <View style={styles.cartBadge}>
-                <Text style={styles.cartBadgeText}>{cartCount > 99 ? '99+' : cartCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('Cart')}>
+          <Cart width={18} height={18} fill="#fff" stroke="#fff" />
+          {cartCount > 0 && (
+            <View style={styles.cartBadge}>
+              <Text style={styles.cartBadgeText}>{cartCount > 99 ? '99+' : cartCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -118,110 +291,35 @@ export default function PosScreen() {
           <Text style={styles.loadingText}>Loading products...</Text>
         </View>
       ) : (
-        <ScrollView showsVerticalScrollIndicator={false}>
-
-          {/* SEARCH + FILTER */}
-          <View style={styles.searchRow}>
-            <View style={styles.searchBox}>
-              <Search width={20} height={20} fill="#2D2F8E" stroke="#2D2F8E" />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search products..."
-                placeholderTextColor="#aaa"
-                value={search}
-                onChangeText={setSearch}
-              />
+        // FlatList + numColumns virtualises the grid — only visible cards are rendered
+        <FlatList
+          data={filtered}
+          keyExtractor={item => item.id}
+          numColumns={2}
+          columnWrapperStyle={styles.columnWrapper}
+          ListHeaderComponent={ListHeader}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          removeClippedSubviews={true}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>📦</Text>
+              <Text style={styles.emptyText}>No products found</Text>
+              <Text style={styles.emptySub}>Add products from the Inventory screen</Text>
             </View>
-            <TouchableOpacity style={[styles.filterBtn, showStockFilters && {borderColor: '#2D2F8E', backgroundColor: '#EEF0FF'}]} onPress={() => setShowStockFilters(!showStockFilters)}>
-              <Filter width={20} height={20} fill={showStockFilters ? "#2D2F8E" : "#1a2e6c"} stroke={showStockFilters ? "#2D2F8E" : "#1a2e6c"} />
-            </TouchableOpacity>
-          </View>
-
-          {showStockFilters && (
-            <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingTop: 10, gap: 8 }}>
-              {['All', 'IN STOCK', 'LOW STOCK'].map(st => (
-                <TouchableOpacity 
-                  key={st}
-                  style={[styles.catChip, stockFilter === st && styles.catChipActive, { borderRadius: 8, paddingVertical: 6 }]}
-                  onPress={() => setStockFilter(st)}
-                >
-                  <Text style={[styles.catChipText, stockFilter === st && styles.catChipTextActive, { fontSize: 11 }]}>{st === 'All' ? 'All Stock' : st}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+          }
+          renderItem={({ item: product }) => (
+            <ProductCard
+              product={product}
+              added={!!addedIds[product.id]}
+              onAdd={() => handleAddToCart(product)}
+              onPress={() => navigation.navigate('ProductDetails', { product })}
+            />
           )}
-
-          {/* CATEGORY TABS */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow}>
-            {categories.map(cat => (
-              <TouchableOpacity
-                key={cat}
-                style={[styles.catChip, activeCategory === cat && styles.catChipActive]}
-                onPress={() => setActiveCategory(cat)}
-              >
-                <Text style={[styles.catChipText, activeCategory === cat && styles.catChipTextActive]}>
-                  {cat}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          {/* PRODUCT GRID */}
-          <View style={styles.grid}>
-            {filtered.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyIcon}>📦</Text>
-                <Text style={styles.emptyText}>No products found</Text>
-                <Text style={styles.emptySub}>Add products from the Inventory screen</Text>
-              </View>
-            ) : (
-              filtered.map(product => (
-                <TouchableOpacity
-                  key={product.id}
-                  style={styles.card}
-                  activeOpacity={0.85}
-                  onPress={() => handleAddToCart(product)}
-                >
-                  {/* Status badge */}
-                  <View style={[styles.statusBadge, { backgroundColor: statusColor(product.status) }]}>
-                    <Text style={styles.statusText}>{product.status}</Text>
-                  </View>
-
-                  {/* Product image */}
-                  {product.image ? (
-                    <Image source={{ uri: product.image }} style={styles.productImage} resizeMode="cover" />
-                  ) : (
-                    <View style={[styles.productImage, styles.noImage]}>
-                      <Text style={styles.noImageIcon}>🖼️</Text>
-                    </View>
-                  )}
-
-                  {/* Info */}
-                  <View style={styles.cardBody}>
-                    <Text style={styles.skuText}>{product.sku}</Text>
-                    <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
-                    <View style={styles.priceRow}>
-                      <View>
-                        <Text style={styles.retailLabel}>Price</Text>
-                        <Text style={styles.priceText}>
-                          {product.currency || '₹'}{Number(product.price).toFixed(2)}
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        style={[styles.addBtn, addedIds[product.id] && styles.addBtnAdded]}
-                        onPress={() => handleAddToCart(product)}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={styles.addBtnText}>{addedIds[product.id] ? '✓' : '+'}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
-
-        </ScrollView>
+        />
       )}
 
       {/* CHECKOUT FOOTER */}
@@ -250,7 +348,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', elevation: 2,
   },
   headerTitle: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerTitleText: { fontSize: 16, fontWeight: '800', color: '#2D2F8E' },
   headerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e' },
   iconBtn: {
@@ -266,6 +363,10 @@ const styles = StyleSheet.create({
   cartBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
   loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { color: '#94A3B8', fontSize: 14 },
+
+  listContent: { paddingBottom: 100 },
+  columnWrapper: { paddingHorizontal: 12, gap: 12, marginTop: 12 },
+
   searchRow: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 14, gap: 10, alignItems: 'center' },
   searchBox: {
     flex: 1, flexDirection: 'row', alignItems: 'center',
@@ -278,22 +379,38 @@ const styles = StyleSheet.create({
     width: 44, height: 44, backgroundColor: '#fff', borderRadius: 12,
     alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#e8ecf4',
   },
-  catRow: { paddingHorizontal: 16, paddingVertical: 14, gap: 8 },
-  catChip: {
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: '#fff', borderWidth: 1, borderColor: '#e8ecf4',
+  activeFilterRow: {
+    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
+    paddingHorizontal: 16, paddingTop: 8, gap: 8,
   },
-  catChipActive: { backgroundColor: '#2D2F8E', borderColor: '#2D2F8E' },
-  catChipText: { fontSize: 13, fontWeight: '600', color: '#666' },
-  catChipTextActive: { color: '#fff' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, gap: 12, paddingBottom: 100 },
-  emptyState: { flex: 1, width: '100%', alignItems: 'center', paddingVertical: 60 },
-  emptyIcon: { fontSize: 48, marginBottom: 12 },
-  emptyText: { fontSize: 16, fontWeight: '700', color: '#333' },
-  emptySub: { fontSize: 13, color: '#aaa', marginTop: 4 },
-  card: { width: '47%', backgroundColor: '#fff', borderRadius: 14, overflow: 'hidden', elevation: 3, position: 'relative' },
-  statusBadge: { position: 'absolute', top: 8, left: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, zIndex: 1 },
-  statusText: { color: '#fff', fontSize: 8, fontWeight: '800', letterSpacing: 0.5 },
+  activeFilterChip: {
+    backgroundColor: '#EEF0FF', paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 20, borderWidth: 1, borderColor: '#C7D2FE',
+  },
+  activeFilterTxt: { fontSize: 12, color: '#2D2F8E', fontWeight: '700' },
+  filterPanel: {
+    backgroundColor: '#fff', marginHorizontal: 16, marginTop: 10,
+    borderRadius: 14, padding: 14, elevation: 3,
+    borderWidth: 1, borderColor: '#EEF0FF',
+  },
+  filterSectionLabel: {
+    fontSize: 9, color: '#94A3B8', fontWeight: '800',
+    letterSpacing: 1.5, marginBottom: 8, marginTop: 4,
+  },
+  brandChipRow: { gap: 10, paddingBottom: 4 },
+  brandChip: {
+    paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14,
+    backgroundColor: '#F8F9FF', borderWidth: 1, borderColor: '#E2E8F0',
+  },
+  brandChipActive: { backgroundColor: '#2D2F8E', borderColor: '#2D2F8E' },
+  brandChipTxt: { fontSize: 13, fontWeight: '800', color: '#1E293B' },
+  brandChipTxtActive: { color: '#fff' },
+  brandStockRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  stockDot: { width: 6, height: 6, borderRadius: 3 },
+  brandChipStock: { fontSize: 10, color: '#94A3B8', fontWeight: '600' },
+  brandChipStockActive: { color: 'rgba(255,255,255,0.75)' },
+
+  card: { flex: 1, backgroundColor: '#fff', borderRadius: 14, overflow: 'hidden', elevation: 3 },
   productImage: { width: '100%', height: 130, backgroundColor: '#1a1a2e' },
   noImage: { alignItems: 'center', justifyContent: 'center' },
   noImageIcon: { fontSize: 36 },
@@ -307,7 +424,11 @@ const styles = StyleSheet.create({
   addBtnAdded: { backgroundColor: '#22c55e' },
   addBtnText: { color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 22 },
 
-  // Checkout bar
+  emptyState: { flex: 1, width: '100%', alignItems: 'center', paddingVertical: 60, paddingHorizontal: 16 },
+  emptyIcon: { fontSize: 48, marginBottom: 12 },
+  emptyText: { fontSize: 16, fontWeight: '700', color: '#333' },
+  emptySub: { fontSize: 13, color: '#aaa', marginTop: 4, textAlign: 'center' },
+
   checkoutBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: '#2D2F8E', flexDirection: 'row', alignItems: 'center',

@@ -24,6 +24,10 @@ import QRCodeScanner from 'react-native-qrcode-scanner';
 import { RNCamera } from 'react-native-camera';
 import { request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import Svg2, { Path, Circle, Polyline, Line } from 'react-native-svg';
+import Qrcode from '../../../../assets/qr.svg';
+import DownArrow from '../../../../assets/down-arrow.svg';
+import Upload from '../../../../assets/upload.svg';
+import Save from '../../../../assets/save.svg'
 const CURRENCIES = [
   { symbol: "₹", label: "INR - Indian Rupee" },
   { symbol: "$", label: "USD - US Dollar" },
@@ -50,7 +54,6 @@ export default function AddProductScreen() {
 
   const [categories, setCategories]       = useState([]);
   const [showCatModal, setShowCatModal]   = useState(false);
-  const [showCurrencyModal, setShowCurrencyModal] = useState(false);
   const [showScanner, setShowScanner]     = useState(false);
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
   const [uploading, setUploading]         = useState(false); // image uploading
@@ -119,10 +122,27 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
 
   // ── Save product to Supabase ───────────────────────────────────────
   const handleSave = async () => {
-    if (!productName.trim())  { Alert.alert('Validation', 'Product name is required.'); return; }
-    if (!selectedCategory)    { Alert.alert('Validation', 'Please select a category.'); return; }
-    if (!sku.trim())           { Alert.alert('Validation', 'Barcode / SKU is required.'); return; }
-    if (!sellingPrice.trim()) { Alert.alert('Validation', 'Selling price is required.'); return; }
+      if (!productName.trim())  { Alert.alert('Validation', 'Product name is required.'); return; }
+      if (!sku.trim())           { Alert.alert('Validation', 'IMEI / SKU is required.'); return; }
+      if (!sellingPrice.trim()) { Alert.alert('Validation', 'Selling price is required.'); return; }
+
+    // ── Check for duplicate SKU ───────────────────────────────────────
+    try {
+      const { data: existing, error: checkError } = await supabase
+        .from('products')
+        .select('id, name')
+        .or(`sku.eq.${sku.trim()},imei.eq.${sku.trim()}`)
+        .limit(1);
+
+      if (checkError) throw checkError;
+
+      if (existing && existing.length > 0) {
+        Alert.alert('Duplicate SKU', `This IMEI/SKU "${sku.trim()}" already exists for product "${existing[0].name}".\n\nPlease use a different IMEI/SKU.`);
+        return;
+      }
+    } catch (e) {
+      console.warn('SKU check error:', e.message);
+    }
 
     setSaving(true);
     try {
@@ -145,11 +165,11 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
       const { error } = await supabase.from('products').insert({
         name:          productName.trim(),
         sku:           sku.trim(),
+        imei:          sku.trim(),
         currency:      currency.symbol,
         price:         parseFloat(sellingPrice) || 0,
         marketPrice:   parseFloat(marketPrice)  || 0,
         discount:      parseFloat(discount)      || 0,
-        category:      selectedCategory.name,
         image:         imageUrl,
         description:   description.trim(),
         color:         color.trim(),
@@ -243,41 +263,28 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
           <Text style={styles.label}>PRODUCT NAME</Text>
           <TextInput
             style={styles.input}
-            placeholder="e.g. iPhone 15 Pro Max"
-            placeholderTextColor="#bbb"
+            placeholder="Enter Product Name"
+            placeholderTextColor="#cdcdcdff"
             value={productName}
             onChangeText={setProductName}
             editable={!isBusy}
           />
 
-          <Text style={styles.label}>CATEGORY</Text>
-          <TouchableOpacity style={styles.dropdown} onPress={() => setShowCatModal(true)} activeOpacity={0.8}>
-            <Text style={selectedCategory ? styles.dropdownSelected : styles.dropdownPlaceholder}>
-              {selectedCategory ? `${selectedCategory.icon || ''}  ${selectedCategory.name}` : 'Select a category'}
-            </Text>
-            <Text style={styles.dropdownArrow}>▾</Text>
-          </TouchableOpacity>
+          <Text style={styles.label}>IMEI / SKU</Text>
 
-          <Text style={styles.label}>BARCODE / SKU</Text>
           <View style={styles.inputRow}>
             <TextInput
               style={[styles.input, { flex: 1, marginBottom: 0 }]}
               placeholder="UPC-12345678"
-              placeholderTextColor="#bbb"
+              placeholderTextColor="#cdcdcdff"
               value={sku}
               onChangeText={setSku}
               editable={!isBusy}
             />
             <TouchableOpacity style={styles.qrBox} onPress={() => setShowScanner(true)}>
-              <Text style={styles.qrIcon}>▦</Text>
+              <Qrcode width={22} height={22} fill="#000000ff" />
             </TouchableOpacity>
           </View>
-
-          <Text style={[styles.label, { marginTop: 14 }]}>CURRENCY</Text>
-          <TouchableOpacity style={styles.dropdown} onPress={() => setShowCurrencyModal(true)} activeOpacity={0.8}>
-            <Text style={styles.dropdownSelected}>{currency.symbol}  {currency.label}</Text>
-            <Text style={styles.dropdownArrow}>▾</Text>
-          </TouchableOpacity>
 
           <Text style={styles.label}>MARKET PRICE</Text>
           <View style={styles.priceInputBox}>
@@ -285,7 +292,7 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
             <TextInput
               style={styles.priceInput}
               placeholder="0.00"
-              placeholderTextColor="#bbb"
+              placeholderTextColor="#cdcdcdff"
               keyboardType="decimal-pad"
               value={marketPrice}
               onChangeText={setMarketPrice}
@@ -295,11 +302,11 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
 
           <Text style={styles.label}>SELLING PRICE</Text>
           <View style={[styles.priceInputBox, styles.priceInputBoxActive]}>
-            <Text style={[styles.currencySymbol, { color: '#3d5af1' }]}>{currency.symbol}</Text>
+            <Text style={[styles.currencySymbol, { color: '#000' }]}>{currency.symbol}</Text>
             <TextInput
-              style={[styles.priceInput, { color: '#3d5af1' }]}
+              style={[styles.priceInput, { color: '#000' }]}
               placeholder="0.00"
-              placeholderTextColor="#bbb"
+              placeholderTextColor="#cdcdcdff"
               keyboardType="decimal-pad"
               value={sellingPrice}
               onChangeText={setSellingPrice}
@@ -311,7 +318,7 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
           <TextInput
             style={styles.input}
             placeholder="0"
-            placeholderTextColor="#bbb"
+            placeholderTextColor="#000"
             keyboardType="decimal-pad"
             value={discount}
             onChangeText={setDiscount}
@@ -322,7 +329,7 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
           <TextInput
             style={styles.input}
             placeholder="Units in hand"
-            placeholderTextColor="#bbb"
+            placeholderTextColor="#cdcdcdff"
             keyboardType="number-pad"
             value={stockQty}
             onChangeText={setStockQty}
@@ -333,15 +340,15 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
         {/* ── PRODUCT VARIANTS ── */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardIcon}>🎨</Text>
+           
             <Text style={styles.cardTitle}>Product Variants</Text>
           </View>
 
           <Text style={styles.label}>COLOR</Text>
           <TextInput
             style={styles.input}
-            placeholder="e.g. Obsidian Black, Blue Titanium"
-            placeholderTextColor="#bbb"
+            placeholder="Enter Product Color"
+            placeholderTextColor="#cdcdcdff"
             value={color}
             onChangeText={setColor}
             editable={!isBusy}
@@ -351,7 +358,7 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
           <TextInput
             style={styles.input}
             placeholder="Enter product specifications"
-            placeholderTextColor="#bbb"
+            placeholderTextColor="#cdcdcdff"
             value={storage}
             onChangeText={setStorage}
             editable={!isBusy}
@@ -361,7 +368,7 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
         {/* ── VISUAL ASSETS ── */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardIcon}>🖼️</Text>
+            
             <Text style={styles.cardTitle}>Visual Assets</Text>
           </View>
 
@@ -375,7 +382,7 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
               <Image source={{ uri: imageUri }} style={styles.previewImage} resizeMode="cover" />
             ) : (
               <View style={styles.uploadPlaceholder}>
-                <Text style={styles.uploadIcon}>☁️</Text>
+                <Upload width={32} height={32} fill="#888" />
                 <Text style={styles.uploadText}>Tap to pick image</Text>
                 <Text style={styles.uploadHint}>PNG, JPG UP TO 10MB · Uploaded to Cloudinary</Text>
               </View>
@@ -392,7 +399,7 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
           <TextInput
             style={[styles.input, styles.textArea]}
             placeholder="Enter detailed technical specifications and features..."
-            placeholderTextColor="#bbb"
+            placeholderTextColor="#cdcdcdff"
             multiline
             numberOfLines={4}
             value={description}
@@ -420,7 +427,10 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
           {saving ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.saveBtnText}>💾  Save Product</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Save width={20} height={20} fill="#fff" />
+              <Text style={styles.saveBtnText}>Save Product</Text>
+            </View>
           )}
         </TouchableOpacity>
 
@@ -434,54 +444,6 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
         </View>
         <View style={{ height: 30 }} />
       </ScrollView>
-
-      {/* CATEGORY MODAL */}
-      <Modal visible={showCatModal} transparent animationType="slide" onRequestClose={() => setShowCatModal(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowCatModal(false)}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Select Category</Text>
-            <FlatList
-              data={categories}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.modalItem, selectedCategory?.id === item.id && styles.modalItemActive]}
-                  onPress={() => { setSelectedCategory(item); setShowCatModal(false); }}
-                >
-                  <Text style={[styles.modalItemText, selectedCategory?.id === item.id && styles.modalItemTextActive]}>
-                    {item.icon ? `${item.icon}  ` : ''}{item.name}
-                  </Text>
-                  {selectedCategory?.id === item.id && <Text style={styles.checkMark}>✓</Text>}
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* CURRENCY MODAL */}
-      <Modal visible={showCurrencyModal} transparent animationType="slide" onRequestClose={() => setShowCurrencyModal(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowCurrencyModal(false)}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Select Currency</Text>
-            <FlatList
-              data={CURRENCIES}
-              keyExtractor={(item) => item.symbol}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.modalItem, currency.symbol === item.symbol && styles.modalItemActive]}
-                  onPress={() => { setCurrency(item); setShowCurrencyModal(false); }}
-                >
-                  <Text style={[styles.modalItemText, currency.symbol === item.symbol && styles.modalItemTextActive]}>
-                    {item.symbol}  {item.label}
-                  </Text>
-                  {currency.symbol === item.symbol && <Text style={styles.checkMark}>✓</Text>}
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        </TouchableOpacity>
-      </Modal>
 
       {/* SCANNER MODAL */}
       <Modal visible={showScanner} transparent animationType="slide" onRequestClose={() => setShowScanner(false)}>
@@ -534,29 +496,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   backBtn: { padding: 4 },
-  title: { fontSize: 16, fontWeight: 'bold', color: '#2D2F8E' },
+  title: { fontSize: 16, fontWeight: 'bold', color: '#000' },
   profile: {
     width: 36, height: 36, backgroundColor: '#2D2F8E',
     borderRadius: 10, alignItems: 'center', justifyContent: 'center',
   },
   section: { paddingHorizontal: 16, marginTop: 12, marginBottom: 4 },
-  subTitle: { fontSize: 10, color: '#999', letterSpacing: 2 },
-  mainTitle: { fontSize: 28, fontWeight: 'bold', marginTop: 5 },
+  subTitle: { fontSize: 10, color: '#000', letterSpacing: 2 },
+  mainTitle: { fontSize: 28, fontWeight: 'bold', marginTop: 5, color: '#000' },
   card: {
     backgroundColor: '#fff', marginHorizontal: 16, marginTop: 16,
     borderRadius: 14, padding: 16, elevation: 2,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
   cardIcon: { fontSize: 18 },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: '#3d5af1' },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: '#000' },
   label: {
-    fontSize: 10, color: '#999', letterSpacing: 1.2,
+    fontSize: 10, color: '#000', letterSpacing: 1.2,
     fontWeight: '600', marginBottom: 6, marginTop: 12,
   },
   input: {
     backgroundColor: '#F5F6FA', borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 11,
-    fontSize: 14, color: '#222', marginBottom: 2,
+    fontSize: 14, color: '#000', marginBottom: 2,
     borderWidth: 1, borderColor: '#eaecf4',
   },
   textArea: { height: 90, textAlignVertical: 'top' },
@@ -566,16 +528,41 @@ const styles = StyleSheet.create({
     borderRadius: 10, alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: '#eaecf4',
   },
-  qrIcon: { fontSize: 20, color: '#aaa' },
   dropdown: {
     backgroundColor: '#F5F6FA', borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 11,
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     borderWidth: 1, borderColor: '#eaecf4',
   },
-  dropdownPlaceholder: { fontSize: 14, color: '#bbb' },
-  dropdownSelected: { fontSize: 14, color: '#222', fontWeight: '600' },
-  dropdownArrow: { fontSize: 14, color: '#aaa' },
+  dropdownPlaceholder: { fontSize: 14, color: '#000' },
+  dropdownSelected: { fontSize: 14, color: '#000', fontWeight: '600' },
+  dropdownOpen: {
+    backgroundColor: '#fff',
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  dropdownList: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#eaecf4',
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 10,
+    overflow: 'hidden',
+    marginBottom: 2,
+  },
+  dropdownItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  dropdownItemActive: { backgroundColor: '#EDE9FE' },
+  dropdownItemText: { fontSize: 14, color: '#444' },
+  dropdownItemTextActive: { color: '#000', fontWeight: '700' },
   priceInputBox: {
     backgroundColor: '#F5F6FA', borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 11,
@@ -583,27 +570,26 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#eaecf4', gap: 6, marginBottom: 2,
   },
   priceInputBoxActive: { borderColor: '#3d5af1', backgroundColor: '#f0f2ff' },
-  currencySymbol: { fontSize: 14, color: '#aaa', fontWeight: '700' },
-  priceInput: { flex: 1, fontSize: 14, color: '#222' },
+  currencySymbol: { fontSize: 14, color: '#000', fontWeight: '700' },
+  priceInput: { flex: 1, fontSize: 14, color: '#000' },
   uploadBox: {
     borderWidth: 2, borderColor: '#d0d5f5', borderStyle: 'dashed',
     borderRadius: 12, overflow: 'hidden', minHeight: 120,
     alignItems: 'center', justifyContent: 'center',
   },
   uploadPlaceholder: { alignItems: 'center', paddingVertical: 24, gap: 6 },
-  uploadIcon: { fontSize: 28 },
-  uploadText: { fontSize: 13, color: '#888' },
-  uploadBrowse: { color: '#3d5af1', fontWeight: '700' },
-  uploadHint: { fontSize: 11, color: '#bbb', textAlign: 'center' },
+  uploadText: { fontSize: 13, color: '#cdcdcdff' },
+  uploadBrowse: { color: '#000', fontWeight: '700' },
+  uploadHint: { fontSize: 11, color: '#cdcdcdff', textAlign: 'center' },
   previewImage: { width: '100%', height: 180 },
   removeImageBtn: { alignSelf: 'center', marginTop: 8 },
-  removeImageText: { color: '#ef4444', fontSize: 12, fontWeight: '600' },
+  removeImageText: { color: '#000', fontSize: 12, fontWeight: '600' },
   toggleRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#f0f2f8',
   },
-  toggleLabel: { fontSize: 14, fontWeight: '600', color: '#222' },
-  toggleSub: { fontSize: 11, color: '#aaa', marginTop: 2 },
+  toggleLabel: { fontSize: 14, fontWeight: '600', color: '#000' },
+  toggleSub: { fontSize: 11, color: '#000', marginTop: 2 },
   saveBtn: {
     backgroundColor: '#2D2F8E', margin: 16, marginBottom: 10,
     padding: 15, borderRadius: 12, alignItems: 'center',
@@ -614,27 +600,11 @@ const styles = StyleSheet.create({
     flex: 1, padding: 13, borderRadius: 12, alignItems: 'center',
     borderWidth: 1, borderColor: '#ddd', backgroundColor: '#fff',
   },
-  cancelText: { color: '#888', fontWeight: '600', fontSize: 13 },
+  cancelText: { color: '#000', fontWeight: '600', fontSize: 13 },
   resetBtn: {
     flex: 1, padding: 13, borderRadius: 12, alignItems: 'center',
     borderWidth: 1, borderColor: '#ddd', backgroundColor: '#fff',
   },
-  resetText: { color: '#888', fontWeight: '600', fontSize: 13 },
+  resetText: { color: '#000', fontWeight: '600', fontSize: 13 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalSheet: {
-    backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    paddingHorizontal: 16, paddingTop: 20, paddingBottom: 34, maxHeight: '60%',
-  },
-  modalTitle: {
-    fontSize: 16, fontWeight: '800', color: '#1a2e6c',
-    marginBottom: 16, textAlign: 'center',
-  },
-  modalItem: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: 14, paddingHorizontal: 12, borderRadius: 10, marginBottom: 4,
-  },
-  modalItemActive: { backgroundColor: '#EEF0FF' },
-  modalItemText: { fontSize: 15, color: '#444' },
-  modalItemTextActive: { color: '#3d5af1', fontWeight: '700' },
-  checkMark: { color: '#3d5af1', fontSize: 16, fontWeight: '800' },
 });

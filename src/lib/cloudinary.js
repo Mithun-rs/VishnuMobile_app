@@ -3,12 +3,43 @@
  * ─────────────────────────────────────────────
  * Cloudinary image upload helper for Vishnu Mobile Shop
  * Uses unsigned upload preset (no backend signature needed)
+ * Credentials loaded from .env via react-native-config
  * ─────────────────────────────────────────────
  */
 
-const CLOUD_NAME   = 'dgktgo729';
-const UPLOAD_PRESET = 'vishnu_mobile_products';
-const UPLOAD_URL   = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
+// See `src/lib/supabase.js` for why this is defensive.
+let Config = null;
+let configLoadError = null;
+try {
+  // eslint-disable-next-line global-require
+  const mod = require('react-native-config');
+  Config = mod?.default ?? mod;
+} catch (e) {
+  configLoadError = e;
+}
+
+// ─── 🔑 CLOUDINARY CREDENTIALS (loaded from .env) ─────────────────────────────
+const CLOUD_NAME    = Config?.CLOUDINARY_CLOUD_NAME;
+const UPLOAD_PRESET = Config?.CLOUDINARY_UPLOAD_PRESET;
+const FOLDER        = Config?.CLOUDINARY_FOLDER;
+const UPLOAD_URL    = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
+
+// Warn in development if .env is missing or incomplete
+if (__DEV__ && (configLoadError || !CLOUD_NAME || !UPLOAD_PRESET)) {
+  console.error(
+    (configLoadError
+      ? '❌ Failed to load react-native-config (native module missing).\n' +
+        'Do a clean rebuild:\n' +
+        '  cd android && gradlew clean && cd ..\n' +
+        '  npx react-native run-android\n\n'
+      : '❌ Missing Cloudinary credentials in .env!\n') +
+    'Make sure your .env file has:\n' +
+    '  CLOUDINARY_CLOUD_NAME=your-cloud-name\n' +
+    '  CLOUDINARY_UPLOAD_PRESET=your-upload-preset\n' +
+    '  CLOUDINARY_FOLDER=your-folder-name\n' +
+    'Then rebuild the app: npx react-native run-android'
+  );
+}
 
 /**
  * Upload an image to Cloudinary
@@ -25,15 +56,14 @@ export async function uploadToCloudinary(uri, onProgress) {
     name: `product_${Date.now()}.jpg`,
   });
   formData.append('upload_preset', UPLOAD_PRESET);
-  formData.append('folder', 'vishnu_mobile_shop');
+  if (FOLDER) formData.append('folder', FOLDER);
 
   try {
     const response = await fetch(UPLOAD_URL, {
       method: 'POST',
       body: formData,
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+      // ⚠️ Do NOT set Content-Type manually — fetch must auto-generate
+      // the multipart boundary, otherwise Cloudinary rejects the upload.
     });
 
     if (!response.ok) {
