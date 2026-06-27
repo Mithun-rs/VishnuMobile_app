@@ -10,7 +10,7 @@ import ReportScreen from '../Admin/More/More';
 
 // Screens — Shared / Staff tabs
 import PosScreen from '../Pos/Pos';
-import StaffDashboard from '../Staff/StaffDashboard/StaffDashboard';
+import StaffDashboard from '../Staff/Staffdashboard/StaffDashboard';
 import StaffScanAttendance from '../Staff/StaffScanAttendance/StaffScanAttendance';
 
 // Icons

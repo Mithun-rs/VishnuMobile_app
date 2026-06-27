@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../../../lib/supabase";
 import Svg2, { Path, Circle, Polyline, Line } from 'react-native-svg';
 
@@ -45,6 +46,7 @@ export default function InventoryScreen() {
   const [brandCounts, setBrandCounts]      = useState({});
   const [loading, setLoading]              = useState(true);
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
+  const [selectedShop, setSelectedShop]   = useState('Shop 1');
 
 
   const handleLogout = () => {
@@ -58,9 +60,29 @@ export default function InventoryScreen() {
   // ── Load categories + product counts from Supabase ─────────────────
   useFocusEffect(
     useCallback(() => {
+      const getActiveShop = async () => {
+        try {
+          const savedShop = await AsyncStorage.getItem('selectedShop');
+          if (savedShop) {
+            setSelectedShop(savedShop);
+          }
+        } catch (e) {
+          console.warn('Failed to load selected shop:', e.message);
+        }
+      };
+      getActiveShop();
       loadAll();
     }, [])
   );
+
+  const handleShopChange = async (shop) => {
+    setSelectedShop(shop);
+    try {
+      await AsyncStorage.setItem('selectedShop', shop);
+    } catch (e) {
+      console.warn('Failed to save selected shop:', e.message);
+    }
+  };
 
   const loadAll = async () => {
     setLoading(true);
@@ -168,7 +190,23 @@ export default function InventoryScreen() {
           <Text style={styles.mainTitle}>Inventory</Text>
         </View>
 
-
+        {/* SHOP TOGGLE BAR */}
+        <View style={styles.toggleContainer}>
+          <TouchableOpacity
+            style={[styles.toggleBtn, selectedShop === 'Shop 1' && styles.toggleBtnActive]}
+            onPress={() => handleShopChange('Shop 1')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.toggleBtnText, selectedShop === 'Shop 1' && styles.toggleBtnTextActive]}>Shop 1</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleBtn, selectedShop === 'Shop 2' && styles.toggleBtnActive]}
+            onPress={() => handleShopChange('Shop 2')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.toggleBtnText, selectedShop === 'Shop 2' && styles.toggleBtnTextActive]}>Shop 2</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* CATEGORIES HEADER */}
         <View style={styles.row}>
@@ -297,4 +335,39 @@ const styles = StyleSheet.create({
   cardDesc: { color: '#94A3B8', fontSize: 10, marginTop: 2 },
 
   hint: { textAlign: 'center', color: '#CBD5E1', fontSize: 11, marginTop: 12 },
+
+  // Toggle Bar Styles
+  toggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#EEF0FF',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: '#D2D6F6',
+  },
+  toggleBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  toggleBtnActive: {
+    backgroundColor: '#2D2F8E',
+    elevation: 2,
+    shadowColor: '#2D2F8E',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  toggleBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  toggleBtnTextActive: {
+    color: '#fff',
+  },
 });
