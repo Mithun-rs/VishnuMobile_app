@@ -17,6 +17,7 @@ import {
 import Person from '../../../../assets/person.svg';
 import BackArrow from '../../../../assets/back-arrow.svg';
 import { useNavigation } from "@react-navigation/native";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { launchImageLibrary } from "react-native-image-picker";
 import { supabase } from "../../../../lib/supabase";
 import { uploadToCloudinary } from "../../../../lib/cloudinary";
@@ -51,6 +52,7 @@ export default function AddProductScreen() {
   const [description, setDescription]     = useState("");
   const [imageUri, setImageUri]           = useState(null);   // local URI
   const [isAvailable, setIsAvailable]     = useState(true);
+  const [shop, setShop]                   = useState("shop1");
 
   const [categories, setCategories]       = useState([]);
   const [showCatModal, setShowCatModal]   = useState(false);
@@ -105,6 +107,19 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
       }
     };
     loadCategories();
+  }, []);
+
+  // ── Set default shop from AsyncStorage selected shop ─────────────────
+  useEffect(() => {
+    const getActiveShop = async () => {
+      try {
+        const savedShop = await AsyncStorage.getItem('selectedShop');
+        if (savedShop) {
+          setShop(savedShop.toLowerCase().replace(/\s+/g, ''));
+        }
+      } catch (e) {}
+    };
+    getActiveShop();
   }, []);
 
   // ── Pick image from gallery ────────────────────────────────────────
@@ -176,6 +191,7 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
         storage:       storage.trim(),
         stockQty:      qty,
         available:     isAvailable,
+        shop:          (shop || 'shop1').trim(),
         // status is auto-set by the DB trigger based on stockQty
       });
 
@@ -198,6 +214,7 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
     setCurrency(CURRENCIES[0]); setMarketPrice(''); setSellingPrice('');
     setDiscount(''); setStockQty(''); setColor(''); setStorage('');
     setDescription(''); setImageUri(null); setIsAvailable(true);
+    setShop('shop1');
   };
 
   const handleScannerSuccess = (e) => {
@@ -351,6 +368,16 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
             placeholderTextColor="#cdcdcdff"
             value={color}
             onChangeText={setColor}
+            editable={!isBusy}
+          />
+
+          <Text style={styles.label}>SHOP NUMBER</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. shop1"
+            placeholderTextColor="#cdcdcdff"
+            value={shop}
+            onChangeText={setShop}
             editable={!isBusy}
           />
 

@@ -16,6 +16,7 @@ import Qrcode from '../../../../assets/qr.svg';
 import Edit from '../../../../assets/edit.svg';
 import Delete from '../../../../assets/delete.svg'
 import { Platform, PermissionsAndroid } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 const BackIcon = () => (
   <Svg2 width={22} height={22} viewBox="0 0 24 24" fill="none">
     <Path d="M19 12H5M12 5l-7 7 7 7" stroke="#2D2F8E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -24,7 +25,7 @@ const BackIcon = () => (
 
 
 
-const EMPTY_FORM = { name: '', sku: '', price: '', marketPrice: '', description: '', color: '',qty:'1' };
+const EMPTY_FORM = { name: '', sku: '', price: '', marketPrice: '', description: '', color: '',qty:'1', shop: 'shop1' };
 
 
 export default function AdminProductsScreen() {
@@ -141,8 +142,15 @@ export default function AdminProductsScreen() {
   const loadProducts = async () => {
     setLoading(true);
     try {
+      const savedShop = await AsyncStorage.getItem('selectedShop');
+      const dbShopVal = savedShop ? savedShop.toLowerCase().replace(/\s+/g, '') : 'shop1';
+
       const { data, error } = await supabase
-        .from('products').select('*').eq('brand_id', brandId).order('created_at', { ascending: false });
+        .from('products')
+        .select('*')
+        .eq('brand_id', brandId)
+        .eq('shop', dbShopVal)
+        .order('created_at', { ascending: false });
       if (error) throw error;
       setProducts(data || []);
     } catch (e) {
@@ -152,9 +160,17 @@ export default function AdminProductsScreen() {
     }
   };
 
-  const openAddModal = () => {
+  const openAddModal = async () => {
     setEditingProduct(null);
-    setForm(EMPTY_FORM);
+    let defaultShop = 'shop1';
+    try {
+      const savedShop = await AsyncStorage.getItem('selectedShop');
+      if (savedShop) {
+        defaultShop = savedShop.toLowerCase().replace(/\s+/g, '');
+      }
+    } catch (_) {}
+
+    setForm({ ...EMPTY_FORM, shop: defaultShop });
     setImageUri(null);
     setIsAvailable(true);
     setModalVisible(true);
@@ -170,6 +186,7 @@ export default function AdminProductsScreen() {
       description: product.description || '',
       color: product.color || '',
       qty: String(product.stockQty ?? 1),
+      shop: product.shop || 'shop1',
     });
 
     setImageUri(product.image || null);
@@ -272,6 +289,7 @@ const handleSave = async () => {
       brand_id:    brandId,
       category:    categoryName,
       currency:    '₹',
+      shop:        (form.shop || 'shop1').trim(),
     };
 
     if (editingProduct) {
@@ -447,6 +465,9 @@ const handleSave = async () => {
               <Text style={s.lbl}>COLOR / VARIANT</Text>
               <TextInput style={s.inp} placeholder="e.g. Black 256GB" placeholderTextColor="#bbb" value={form.color} onChangeText={v => setForm(f => ({ ...f, color: v }))} editable={!isBusy} />
 
+              <Text style={s.lbl}>SHOP NUMBER</Text>
+              <TextInput style={s.inp} placeholder="e.g. shop1" placeholderTextColor="#bbb" value={form.shop} onChangeText={v => setForm(f => ({ ...f, shop: v }))} editable={!isBusy} />
+
               <Text style={s.lbl}>DESCRIPTION</Text>
               <TextInput style={[s.inp, s.textarea]} placeholder="Product details..." placeholderTextColor="#bbb" multiline numberOfLines={3} value={form.description} onChangeText={v => setForm(f => ({ ...f, description: v }))} editable={!isBusy} />
 
@@ -595,7 +616,7 @@ const handleSave = async () => {
       ) : null}
 
       {/* IMEI */}
-      <Text style={s.productSku}>IMEI: {product.imei || product.sku || '—'}</Text>
+      <Text style={s.productSku}>IMEI: {product.imei || product.sku || '—'}  |  🏪 {product.shop || 'shop1'}</Text>
 
       {/* Price row */}
       <View style={s.priceRow}>

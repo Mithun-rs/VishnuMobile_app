@@ -125,7 +125,7 @@ export default function ProductsSoldScreen() {
               <View style={styles.cardInfo}>
                 <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
                 <Text style={styles.cardSub}>
-                  IMEI: {item.imei || item.sku || '—'}
+                  IMEI: {item.imei || item.sku || '—'}{item.shop ? ` | 🏪 ${item.shop}` : ''}
                 </Text>
                 <Text style={styles.cardSub}>
                   {item.color ? `${item.color} · ` : ''}{item.category || ''}

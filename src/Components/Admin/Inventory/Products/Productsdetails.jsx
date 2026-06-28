@@ -185,6 +185,12 @@ export default function ProductDetailScreen() {
       </View>
     ) : null}
 
+    {/* Shop Location */}
+    <View style={styles.imeiBox}>
+      <Text style={styles.imeiLabel}>Shop Location</Text>
+      <Text style={styles.imeiText}>{product.shop || 'shop1'}</Text>
+    </View>
+
     {/* BUTTON */}
     <TouchableOpacity
       style={[styles.addBtn, added && styles.addBtnAdded]}

@@ -19,8 +19,8 @@ import Cart from '../../assets/cart.svg';
 import Search from '../../assets/search-icon.svg';
 
 // Module-level cache — survives tab switches, cleared after 2 minutes
-let _posCache = null;
-let _posCacheTime = 0;
+let _posCache = {};
+let _posCacheTime = {};
 const POS_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
 
 
@@ -36,7 +36,7 @@ const ProductCard = memo(({ product, added, onAdd, onPress }) => (
       fallback={<Text style={styles.noImageIcon}>🖼️</Text>}
     />
     <View style={styles.cardBody}>
-      <Text style={styles.skuText}>{product.sku}</Text>
+      <Text style={styles.skuText}>{product.sku} | 🏪 {product.shop || 'shop1'}</Text>
       <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
       <View style={styles.priceRow}>
         <View>
@@ -67,12 +67,30 @@ export default function PosScreen() {
   const [allProducts, setAllProducts]         = useState([]);
   const [brands, setBrands]                   = useState([]);
   const [loading, setLoading]                 = useState(true);
+  const [selectedShop, setSelectedShop]       = useState('Shop 1');
 
   useFocusEffect(
     useCallback(() => {
+      const getActiveShop = async () => {
+        try {
+          const savedShop = await AsyncStorage.getItem('selectedShop');
+          if (savedShop) {
+            setSelectedShop(savedShop);
+          }
+        } catch (_) {}
+      };
+      getActiveShop();
       loadAll(); // Always reload on focus so newly added products appear immediately
     }, [])
   );
+
+  const handleShopChange = async (shop) => {
+    setSelectedShop(shop);
+    try {
+      await AsyncStorage.setItem('selectedShop', shop);
+      loadAll(); // Trigger load when shop changes
+    } catch (_) {}
+  };
 
   // Very cheap: reads cart from AsyncStorage only
   const refreshCartCount = async () => {
@@ -85,10 +103,16 @@ export default function PosScreen() {
 
   // Full data load — runs once on first open, then served from cache
   const loadAll = async () => {
+    let savedShop = null;
+    try {
+      savedShop = await AsyncStorage.getItem('selectedShop');
+    } catch (_) {}
+    const dbShopVal = savedShop ? savedShop.toLowerCase().replace(/\s+/g, '') : 'shop1';
+
     // ── Serve from cache if fresh ───────────────────────────────────
-    if (_posCache && (Date.now() - _posCacheTime) < POS_CACHE_TTL) {
-      setAllProducts(_posCache.products);
-      setBrands(_posCache.brands);
+    if (_posCache[dbShopVal] && (Date.now() - _posCacheTime[dbShopVal]) < POS_CACHE_TTL) {
+      setAllProducts(_posCache[dbShopVal].products);
+      setBrands(_posCache[dbShopVal].brands);
       setLoading(false);
       await refreshCartCount();
       return;
@@ -101,8 +125,9 @@ export default function PosScreen() {
         supabase
           .from('products')
           // Only the columns POS needs — skips description, imei, metadata, etc.
-          .select('id, name, sku, price, currency, "stockQty", image, brand_id, category')
+          .select('id, name, sku, price, currency, "stockQty", image, brand_id, category, shop')
           .eq('available', true)
+          .eq('shop', dbShopVal)
           .order('name'),
         supabase
           .from('brands')
@@ -118,8 +143,8 @@ export default function PosScreen() {
       const brands   = brandRes.data || [];
 
       // Store in cache
-      _posCache = { products, brands };
-      _posCacheTime = Date.now();
+      _posCache[dbShopVal] = { products, brands };
+      _posCacheTime[dbShopVal] = Date.now();
 
       setAllProducts(products);
       setBrands(brands);
@@ -188,6 +213,24 @@ export default function PosScreen() {
   // Rendered once above the product grid — search, filter chips, brand panel
   const ListHeader = (
     <>
+      {/* SHOP TOGGLE BAR */}
+      <View style={styles.toggleContainer}>
+        <TouchableOpacity
+          style={[styles.toggleBtn, selectedShop === 'Shop 1' && styles.toggleBtnActive]}
+          onPress={() => handleShopChange('Shop 1')}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.toggleBtnText, selectedShop === 'Shop 1' && styles.toggleBtnTextActive]}>Shop 1</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.toggleBtn, selectedShop === 'Shop 2' && styles.toggleBtnActive]}
+          onPress={() => handleShopChange('Shop 2')}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.toggleBtnText, selectedShop === 'Shop 2' && styles.toggleBtnTextActive]}>Shop 2</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>
           <Search width={20} height={20} fill="#2D2F8E" stroke="#2D2F8E" />
@@ -441,4 +484,39 @@ const styles = StyleSheet.create({
   checkoutBadgeText: { color: '#2D2F8E', fontWeight: '900', fontSize: 13 },
   checkoutText: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '800' },
   checkoutArrow: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  
+  // Toggle Bar Styles
+  toggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#EEF0FF',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: '#D2D6F6',
+  },
+  toggleBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  toggleBtnActive: {
+    backgroundColor: '#2D2F8E',
+    elevation: 2,
+    shadowColor: '#2D2F8E',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  toggleBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  toggleBtnTextActive: {
+    color: '#fff',
+  },
 });

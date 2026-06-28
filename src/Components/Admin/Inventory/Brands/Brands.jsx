@@ -274,6 +274,7 @@ export default function BrandsScreen() {
     setSelectedShop(shop);
     try {
       await AsyncStorage.setItem('selectedShop', shop);
+      loadAll(); // Reload product counts when shop toggles
     } catch (e) {
       console.warn('Failed to save selected shop:', e.message);
     }
@@ -286,8 +287,11 @@ export default function BrandsScreen() {
         .from('brands').select('*').eq('category_id', categoryId).order('name');
       if (brandsErr) throw brandsErr;
 
+      const savedShop = await AsyncStorage.getItem('selectedShop');
+      const dbShopVal = savedShop ? savedShop.toLowerCase().replace(/\s+/g, '') : 'shop1';
+
       const { data: products, error: prodErr } = await supabase
-        .from('products').select('brand_id');
+        .from('products').select('brand_id').eq('shop', dbShopVal);
       if (prodErr) throw prodErr;
 
       const countMap = {};
@@ -313,12 +317,16 @@ export default function BrandsScreen() {
     setDownloading(true);
     try {
       // Fetch all products for every brand in this category at once
-      const brandIds = brands.map(b => b.id);
+      const brand_id = brands.map(b => b.id);
+
+      const savedShop = await AsyncStorage.getItem('selectedShop');
+      const dbShopVal = savedShop ? savedShop.toLowerCase().replace(/\s+/g, '') : 'shop1';
 
       const { data: allProducts, error: prodErr } = await supabase
         .from('products')
         .select('id, name, sku, imei, category, price, "stockQty", brand_id')
-        .in('brand_id', brandIds);
+        .in('brand_id', brand_id)
+        .eq('shop', dbShopVal);
 
       if (prodErr) throw prodErr;
 

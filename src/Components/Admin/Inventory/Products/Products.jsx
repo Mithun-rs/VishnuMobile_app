@@ -40,10 +40,14 @@ export default function ProductsScreen() {
   const loadAll = async () => {
     setLoading(true);
     try {
+      const savedShop = await AsyncStorage.getItem('selectedShop');
+      const dbShopVal = savedShop ? savedShop.toLowerCase().replace(/\s+/g, '') : 'shop1';
+
       // ── Fetch products from Supabase ─────────────────────────────
       const { data: products, error } = await supabase
         .from('products')
         .select('*')
+        .eq('shop', dbShopVal)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -214,7 +218,7 @@ export default function ProductsScreen() {
 
                   {/* Info */}
                   <View style={styles.cardBody}>
-                    <Text style={styles.skuText}>{product.sku}</Text>
+                    <Text style={styles.skuText}>{product.sku} | 🏪 {product.shop || 'shop1'}</Text>
                     <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
                     <View style={styles.priceRow}>
                       <View>

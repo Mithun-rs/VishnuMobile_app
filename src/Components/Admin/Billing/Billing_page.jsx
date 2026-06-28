@@ -387,6 +387,7 @@ const { error: insertErr } = await supabase.from('sold_products').insert({
   payment_method: paymentMethod,
   sold_by:        selectedStaff?.id   || null,
   sold_by_name:   selectedStaff?.full_name || selectedStaff?.username || null,
+  shop:           product.shop || 'shop1',
 });
         if (insertErr) throw insertErr;
 
