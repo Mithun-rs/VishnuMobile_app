@@ -4,6 +4,7 @@ import {
   ScrollView, Modal, TextInput, Alert, ActivityIndicator, Image, Share, Platform,
 } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../../../lib/supabase';
 import Svg2, { Path } from 'react-native-svg';
 import RNPrint from 'react-native-print';
@@ -250,8 +251,33 @@ export default function BrandsScreen() {
   const [editingBrand, setEditingBrand] = useState(null); // New
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [selectedShop, setSelectedShop]   = useState('Shop 1');
 
-  useFocusEffect(useCallback(() => { loadAll(); }, [categoryId]));
+  useFocusEffect(
+    useCallback(() => {
+      const getActiveShop = async () => {
+        try {
+          const savedShop = await AsyncStorage.getItem('selectedShop');
+          if (savedShop) {
+            setSelectedShop(savedShop);
+          }
+        } catch (e) {
+          console.warn('Failed to load selected shop:', e.message);
+        }
+      };
+      getActiveShop();
+      loadAll();
+    }, [categoryId])
+  );
+
+  const handleShopChange = async (shop) => {
+    setSelectedShop(shop);
+    try {
+      await AsyncStorage.setItem('selectedShop', shop);
+    } catch (e) {
+      console.warn('Failed to save selected shop:', e.message);
+    }
+  };
 
   const loadAll = async () => {
     setLoading(true);
@@ -485,6 +511,24 @@ export default function BrandsScreen() {
         </Text>
       </View>
 
+      {/* SHOP TOGGLE BAR */}
+      <View style={s.toggleContainer}>
+        <TouchableOpacity
+          style={[s.toggleBtn, selectedShop === 'Shop 1' && s.toggleBtnActive]}
+          onPress={() => handleShopChange('Shop 1')}
+          activeOpacity={0.8}
+        >
+          <Text style={[s.toggleBtnText, selectedShop === 'Shop 1' && s.toggleBtnTextActive]}>Shop 1</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.toggleBtn, selectedShop === 'Shop 2' && s.toggleBtnActive]}
+          onPress={() => handleShopChange('Shop 2')}
+          activeOpacity={0.8}
+        >
+          <Text style={[s.toggleBtnText, selectedShop === 'Shop 2' && s.toggleBtnTextActive]}>Shop 2</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* ── DOWNLOAD BANNER ─────────────────────────────────────────────── */}
       {!loading && brands.length > 0 && (
         <View style={s.downloadBanner}>
@@ -670,4 +714,39 @@ const s = StyleSheet.create({
   cancelTxt: { color: '#64748B', fontWeight: '700', fontSize: 14 },
   saveBtn:   { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', backgroundColor: '#2D2F8E' },
   saveTxt:   { color: '#fff', fontWeight: '700', fontSize: 14 },
+
+  // Toggle Bar Styles
+  toggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#EEF0FF',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: '#D2D6F6',
+  },
+  toggleBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  toggleBtnActive: {
+    backgroundColor: '#2D2F8E',
+    elevation: 2,
+    shadowColor: '#2D2F8E',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  toggleBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  toggleBtnTextActive: {
+    color: '#fff',
+  },
 });
