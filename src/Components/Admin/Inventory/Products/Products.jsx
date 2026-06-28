@@ -218,7 +218,8 @@ export default function ProductsScreen() {
 
                   {/* Info */}
                   <View style={styles.cardBody}>
-                    <Text style={styles.skuText}>{product.sku} | 🏪 {product.shop || 'shop1'}</Text>
+                    <Text style={styles.skuText}>{product.sku}</Text>
+                    <Text style={styles.skuText}>🏪 {product.shop || 'shop1'}</Text>
                     <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
                     <View style={styles.priceRow}>
                       <View>

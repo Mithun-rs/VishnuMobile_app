@@ -616,7 +616,8 @@ const handleSave = async () => {
       ) : null}
 
       {/* IMEI */}
-      <Text style={s.productSku}>IMEI: {product.imei || product.sku || '—'}  |  🏪 {product.shop || 'shop1'}</Text>
+      <Text style={s.productSku}>IMEI: {product.imei || product.sku || '—'}</Text>
+      <Text style={s.productSku}>🏪 {product.shop || 'shop1'}</Text>
 
       {/* Price row */}
       <View style={s.priceRow}>

@@ -36,7 +36,8 @@ const ProductCard = memo(({ product, added, onAdd, onPress }) => (
       fallback={<Text style={styles.noImageIcon}>🖼️</Text>}
     />
     <View style={styles.cardBody}>
-      <Text style={styles.skuText}>{product.sku} | 🏪 {product.shop || 'shop1'}</Text>
+      <Text style={styles.skuText}>{product.sku}</Text>
+      <Text style={styles.skuText}>🏪 {product.shop || 'shop1'}</Text>
       <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
       <View style={styles.priceRow}>
         <View>
