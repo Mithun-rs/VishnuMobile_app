@@ -14,6 +14,7 @@ import { CachedImage } from "../../../../lib/imageUtils";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../../../lib/supabase";
+import { useAuth } from "../../../../context/AuthContext";
 import Filter from '../../../../assets/filter_icon.svg';
 import Cart from '../../../../assets/cart.svg';
 import BackArrow from '../../../../assets/back-arrow.svg';
@@ -23,6 +24,7 @@ import Search from '../../../../assets/search-icon.svg';
 
 export default function ProductsScreen() {
   const navigation = useNavigation();
+  const { profile } = useAuth();
   const [search, setSearch]               = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
   const [cartCount, setCartCount]         = useState(0);
@@ -31,17 +33,23 @@ export default function ProductsScreen() {
   const [categories, setCategories]       = useState(["All"]);
   const [loading, setLoading]             = useState(true);
 
+  const isStaff = profile?.role !== 'admin' && profile?.role !== 'manager';
+  const userAssignedShopId = profile?.assigned_shop || 'shop1';
+
   useFocusEffect(
     useCallback(() => {
       loadAll();
-    }, [])
+    }, [profile])
   );
 
   const loadAll = async () => {
     setLoading(true);
     try {
-      const savedShop = await AsyncStorage.getItem('selectedShop');
-      const dbShopVal = savedShop ? savedShop.toLowerCase().replace(/\s+/g, '') : 'shop1';
+      let savedShop = null;
+      if (!isStaff) {
+        savedShop = await AsyncStorage.getItem('selectedShop');
+      }
+      const dbShopVal = isStaff ? userAssignedShopId : (savedShop ? savedShop.toLowerCase().replace(/\s+/g, '') : 'shop1');
 
       // ── Fetch products from Supabase ─────────────────────────────
       const { data: products, error } = await supabase

@@ -24,6 +24,7 @@ CREATE TABLE profiles (
   id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   username    TEXT NOT NULL,
   role        TEXT NOT NULL DEFAULT 'staff' CHECK (role IN ('admin', 'staff')),
+  assigned_shop TEXT DEFAULT 'shop1',
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 

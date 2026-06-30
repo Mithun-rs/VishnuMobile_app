@@ -11,6 +11,7 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS phone      TEXT DEFAULT '';
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS email      TEXT DEFAULT '';
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_bg  TEXT DEFAULT '#EEF0FF';
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS salary     NUMERIC(10,2) DEFAULT NULL;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS assigned_shop TEXT DEFAULT 'shop1';
 
 -- Drop old role check that only allowed admin/staff, re-add with manager
 ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_role_check;

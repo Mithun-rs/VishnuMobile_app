@@ -53,6 +53,7 @@ export default function AddProductScreen() {
   const [imageUri, setImageUri]           = useState(null);   // local URI
   const [isAvailable, setIsAvailable]     = useState(true);
   const [shop, setShop]                   = useState("shop1");
+  const [showShopDropdown, setShowShopDropdown] = useState(false);
 
   const [categories, setCategories]       = useState([]);
   const [showCatModal, setShowCatModal]   = useState(false);
@@ -372,14 +373,44 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
           />
 
           <Text style={styles.label}>SHOP NUMBER</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. shop1"
-            placeholderTextColor="#cdcdcdff"
-            value={shop}
-            onChangeText={setShop}
-            editable={!isBusy}
-          />
+          <TouchableOpacity
+            style={[styles.dropdown, showShopDropdown && styles.dropdownOpen]}
+            onPress={() => setShowShopDropdown(!showShopDropdown)}
+            disabled={isBusy}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.dropdownSelected}>
+              {shop === 'shop1' ? 'Shop 1' : shop === 'shop2' ? 'Shop 2' : 'Select Shop'}
+            </Text>
+            <DownArrow width={14} height={14} fill="#888" />
+          </TouchableOpacity>
+
+          {showShopDropdown && (
+            <View style={styles.dropdownList}>
+              <TouchableOpacity
+                style={[styles.dropdownItem, shop === 'shop1' && styles.dropdownItemActive]}
+                onPress={() => {
+                  setShop('shop1');
+                  setShowShopDropdown(false);
+                }}
+              >
+                <Text style={[styles.dropdownItemText, shop === 'shop1' && styles.dropdownItemTextActive]}>
+                  Shop 1
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.dropdownItem, shop === 'shop2' && styles.dropdownItemActive]}
+                onPress={() => {
+                  setShop('shop2');
+                  setShowShopDropdown(false);
+                }}
+              >
+                <Text style={[styles.dropdownItemText, shop === 'shop2' && styles.dropdownItemTextActive]}>
+                  Shop 2
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <Text style={styles.label}>DESCRIPTION</Text>
           <TextInput

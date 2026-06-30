@@ -77,7 +77,7 @@ const fetchProfile = async (userId, userMeta, silent = false) => {
     const { data, error } = await withTimeout(
       supabase
         .from('profiles')
-        .select('id, username, full_name, role, is_approved, phone, salary')
+        .select('id, username, full_name, role, is_approved, phone, salary, assigned_shop')
         .eq('id', userId)
         .maybeSingle(),
       10000 // increase timeout to 10 seconds
@@ -153,13 +153,14 @@ useEffect(() => {
         if (metaRole && !cachedProfile) {
           // No cache exists — use metadata to show app immediately
           const quickProfile = {
-            id:          session.user.id,
-            username:    meta?.username  || null,
-            full_name:   meta?.full_name || null,
-            role:        metaRole,
-            is_approved: ADMIN_ROLES.includes(metaRole) ? true : (meta?.is_approved ?? false),
-            phone:       meta?.phone     || null,
-            salary:      meta?.salary    || null,
+            id:            session.user.id,
+            username:      meta?.username  || null,
+            full_name:     meta?.full_name || null,
+            role:          metaRole,
+            is_approved:   ADMIN_ROLES.includes(metaRole) ? true : (meta?.is_approved ?? false),
+            phone:         meta?.phone     || null,
+            salary:        meta?.salary    || null,
+            assigned_shop: meta?.assigned_shop || 'shop1',
           };
           setProfile(quickProfile);
           setLoading(false); // ✅ Show app with metadata profile
@@ -169,7 +170,7 @@ useEffect(() => {
         // Don't await — runs silently without blocking UI
         supabase
           .from('profiles')
-          .select('id, username, full_name, role, is_approved, phone, salary')
+          .select('id, username, full_name, role, is_approved, phone, salary, assigned_shop')
           .eq('id', session.user.id)
           .maybeSingle()
           .then(async ({ data, error }) => {
@@ -214,20 +215,21 @@ useEffect(() => {
         const meta = session.user.user_metadata;
         if (meta?.role) {
           const quickProfile = {
-            id:          session.user.id,
-            username:    meta?.username  || null,
-            full_name:   meta?.full_name || null,
-            role:        meta.role,
-            is_approved: ADMIN_ROLES.includes(meta.role) ? true : false,
-            phone:       meta?.phone     || null,
-            salary:      meta?.salary    || null,
+            id:            session.user.id,
+            username:      meta?.username  || null,
+            full_name:     meta?.full_name || null,
+            role:          meta.role,
+            is_approved:   ADMIN_ROLES.includes(meta.role) ? true : false,
+            phone:         meta?.phone     || null,
+            salary:        meta?.salary    || null,
+            assigned_shop: meta?.assigned_shop || 'shop1',
           };
           setProfile(quickProfile);
         }
         // Then fetch real profile in background
         supabase
           .from('profiles')
-          .select('id, username, full_name, role, is_approved, phone, salary')
+          .select('id, username, full_name, role, is_approved, phone, salary, assigned_shop')
           .eq('id', session.user.id)
           .maybeSingle()
           .then(async ({ data, error }) => {

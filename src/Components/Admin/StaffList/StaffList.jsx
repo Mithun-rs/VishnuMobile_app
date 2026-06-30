@@ -134,6 +134,60 @@ const AvatarPlaceholder = ({ name = '?', bgColor, size = 56 }) => {
   );
 };
 
+// ─── Custom Alert Modal ──────────────────────────────────────────────────────
+const CustomAlertModal = ({ visible, title, message, buttons, onClose }) => {
+  if (!visible) return null;
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlayCentered}>
+        <View style={[styles.modalCard, { width: '85%', maxWidth: 320, paddingBottom: 20 }]}>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: '#1A1A2E', textAlign: 'center', marginBottom: 8 }}>
+              {title}
+            </Text>
+            {!!message && (
+              <Text style={{ fontSize: 13, color: '#64748B', textAlign: 'center', lineHeight: 18 }}>
+                {message}
+              </Text>
+            )}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, justifyContent: 'center' }}>
+            {buttons && buttons.length > 0 ? (
+              buttons.map((btn, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={[
+                    btn.style === 'destructive' ? styles.actionBtnDelete : styles.cancelBtn,
+                    { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center' }
+                  ]}
+                  onPress={() => {
+                    onClose();
+                    btn.onPress?.();
+                  }}
+                >
+                  <Text style={[
+                    btn.style === 'destructive' ? { color: '#EF5350', fontWeight: '800' } : { color: '#64748B', fontWeight: '800' },
+                    { fontSize: 12, letterSpacing: 0.5 }
+                  ]}>
+                    {btn.text.toUpperCase()}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <TouchableOpacity
+                style={[styles.saveBtn, { flex: 1, paddingVertical: 12, borderRadius: 10 }]}
+                onPress={onClose}
+              >
+                <Text style={[styles.saveBtnText, { fontSize: 12, letterSpacing: 0.5 }]}>OK</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 // ─── Role badge styles ────────────────────────────────────────────────────────
 const ROLE_STYLES = {
   'staff':   { bg: '#E3F2FD', color: '#1565C0', label: 'STAFF' },
@@ -185,6 +239,11 @@ const StaffCard = ({ member, onEdit, onDelete, onPress }) => {
         <View style={styles.metaItem}>
           <Text style={styles.metaLabel}>PHONE NUMBER</Text>
           <Text style={styles.metaValue}>{member.phone || '—'}</Text>
+        </View>
+        <View style={styles.metaSeparator} />
+        <View style={styles.metaItem}>
+          <Text style={styles.metaLabel}>SHOP</Text>
+          <Text style={styles.metaValue}>{member.assigned_shop === 'shop2' ? 'Shop 2' : 'Shop 1'}</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -284,7 +343,7 @@ const computeSalary = (baseSalary, attendanceLogs, approvedLeaves, holidays) => 
 };
 
 // ─── Staff Detail Modal ───────────────────────────────────────────────────────
-const StaffDetailModal = ({ visible, member, onClose, onEdit }) => {
+const StaffDetailModal = ({ visible, member, onClose, onEdit, showAlert }) => {
   const [attendance,      setAttendance]      = useState([]);
   const [loadingAtt,      setLoadingAtt]      = useState(false);
   const [approvedLeaves,  setApprovedLeaves]  = useState([]);
@@ -353,11 +412,11 @@ const StaffDetailModal = ({ visible, member, onClose, onEdit }) => {
   const handleSaveDeduction = async () => {
     const amt = parseFloat(dedAmount.trim());
     if (isNaN(amt) || amt < 0) {
-      Alert.alert('Invalid', 'Enter a valid deduction amount (0 or more).');
+      showAlert('Invalid', 'Enter a valid deduction amount (0 or more).');
       return;
     }
     if (!dedReason.trim()) {
-      Alert.alert('Missing', 'Please enter a reason for the deduction.');
+      showAlert('Missing', 'Please enter a reason for the deduction.');
       return;
     }
     setSavingDed(true);
@@ -381,16 +440,16 @@ const StaffDetailModal = ({ visible, member, onClose, onEdit }) => {
         setDeduction(data);
       }
       setEditingDed(false);
-      Alert.alert('✅ Saved', 'Deduction updated successfully.');
+      showAlert('✅ Saved', 'Deduction updated successfully.');
     } catch (e) {
-      Alert.alert('Error', e.message);
+      showAlert('Error', e.message);
     } finally {
       setSavingDed(false);
     }
   };
 
   const handleRemoveDeduction = () => {
-    Alert.alert('Remove Deduction', 'Remove this deduction for the month?', [
+    showAlert('Remove Deduction', 'Remove this deduction for the month?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove', style: 'destructive',
@@ -402,7 +461,7 @@ const StaffDetailModal = ({ visible, member, onClose, onEdit }) => {
             setDedReason('');
             setEditingDed(false);
           } catch (e) {
-            Alert.alert('Error', e.message);
+            showAlert('Error', e.message);
           }
         }
       }
@@ -446,6 +505,7 @@ const StaffDetailModal = ({ visible, member, onClose, onEdit }) => {
             <DetailRow label="PHONE"       value={member.phone} />
             <DetailRow label="EMAIL"       value={member.email} />
             <DetailRow label="BASE SALARY" value={member.salary ? fmt(member.salary) : '—'} />
+            <DetailRow label="ASSIGNED SHOP" value={member.assigned_shop === 'shop2' ? 'Shop 2' : 'Shop 1'} />
 {/* ── TODAY'S STATUS ── */}
 {(() => {
   const todayKey = new Date().toISOString().slice(0, 10);
@@ -716,7 +776,7 @@ const StaffDetailModal = ({ visible, member, onClose, onEdit }) => {
 };
 
 // ─── Add / Edit Staff Modal ───────────────────────────────────────────────────
-const AddStaffModal = ({ visible, onClose, onRefresh, editingMember }) => {
+const AddStaffModal = ({ visible, onClose, onRefresh, editingMember, showAlert }) => {
   const isEdit = !!editingMember;
 
   const [fullName,  setFullName]  = useState('');
@@ -724,6 +784,7 @@ const AddStaffModal = ({ visible, onClose, onRefresh, editingMember }) => {
   const [phone,     setPhone]     = useState('');
   const [role,      setRole]      = useState('staff');
   const [salary,    setSalary]    = useState('');
+  const [assignedShop, setAssignedShop] = useState('shop1');
   const [saving,    setSaving]    = useState(false);
 
   React.useEffect(() => {
@@ -733,20 +794,21 @@ const AddStaffModal = ({ visible, onClose, onRefresh, editingMember }) => {
       setPhone(editingMember.phone        || '');
       setRole(editingMember.role          || 'staff');
       setSalary(editingMember.salary ? String(editingMember.salary) : '');
+      setAssignedShop(editingMember.assigned_shop || 'shop1');
     } else {
-      setFullName(''); setUsername(''); setPhone(''); setRole('staff'); setSalary('');
+      setFullName(''); setUsername(''); setPhone(''); setRole('staff'); setSalary(''); setAssignedShop('shop1');
     }
   }, [editingMember, visible]);
 
   const resetAndClose = () => {
-    setFullName(''); setUsername(''); setPhone(''); setRole('staff'); setSalary('');
+    setFullName(''); setUsername(''); setPhone(''); setRole('staff'); setSalary(''); setAssignedShop('shop1');
     onClose();
   };
 
   const handleSave = async () => {
     if (!isEdit) {
-      if (!fullName.trim()) { Alert.alert('Missing', 'Please enter the full name.'); return; }
-      if (!username.trim()) { Alert.alert('Missing', 'Please enter a username.');    return; }
+      if (!fullName.trim()) { showAlert('Missing', 'Please enter the full name.'); return; }
+      if (!username.trim()) { showAlert('Missing', 'Please enter a username.');    return; }
     }
 
     setSaving(true);
@@ -759,13 +821,14 @@ const AddStaffModal = ({ visible, onClose, onRefresh, editingMember }) => {
         const updates = {
           phone:  phone.trim() || null,
           salary: salary.trim() ? parseFloat(salary.trim()) : null,
+          assigned_shop: assignedShop,
         };
         const { error } = await supabase
           .from('profiles')
           .update(updates)
           .eq('id', editingMember.id);
         if (error) throw error;
-        Alert.alert('✅ Updated', 'Staff member updated successfully!');
+        showAlert('✅ Updated', 'Staff member updated successfully!');
       } else {
         const { data: edgeData, error: edgeError } = await supabase.functions.invoke('create-staff', {
           body: {
@@ -786,10 +849,11 @@ const AddStaffModal = ({ visible, onClose, onRefresh, editingMember }) => {
           await supabase.from('profiles').update({
             avatar_bg: bg,
             salary: salary.trim() ? parseFloat(salary.trim()) : null,
+            assigned_shop: assignedShop,
           }).eq('id', edgeData.user.id);
         }
 
-        Alert.alert(
+        showAlert(
           '✅ Staff Added',
           `${fullName.trim()} added as ${role}.\n\nUsername: ${username.trim()}\nPassword: ${autoPass}\n\nThey must wait for your approval before logging in.`
         );
@@ -802,7 +866,7 @@ const AddStaffModal = ({ visible, onClose, onRefresh, editingMember }) => {
       let errorMsg = e.message || 'Failed to save staff.';
       if (e.context?.status) errorMsg = `Error ${e.context.status}: ${errorMsg}`;
       else if (e.status)     errorMsg = `Error ${e.status}: ${errorMsg}`;
-      Alert.alert('Error', errorMsg);
+      showAlert('Error', errorMsg);
     } finally {
       setSaving(false);
     }
@@ -908,6 +972,26 @@ const AddStaffModal = ({ visible, onClose, onRefresh, editingMember }) => {
               </Text>
             </View>
 
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>ASSIGNED SHOP</Text>
+              <View style={styles.roleRow}>
+                {[
+                  { id: 'shop1', label: 'Shop 1' },
+                  { id: 'shop2', label: 'Shop 2' },
+                ].map(s => (
+                  <TouchableOpacity
+                    key={s.id}
+                    style={[styles.roleChip, assignedShop === s.id && styles.roleChipActive]}
+                    onPress={() => setAssignedShop(s.id)}
+                    disabled={saving}>
+                    <Text style={[styles.roleChipText, assignedShop === s.id && styles.roleChipTextActive]}>
+                      {s.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
             {!isEdit && (
               <View style={[styles.fieldGroup, { backgroundColor: '#F0FFF4', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#BBF7D0' }]}>
                 <Text style={[styles.fieldLabel, { color: '#166534' }]}>🔑 AUTO-GENERATED PASSWORD</Text>
@@ -964,9 +1048,30 @@ const StaffListScreen = () => {
   const [holidayTitle,         setHolidayTitle]         = useState('');
   const [holidaySaving,        setHolidaySaving]        = useState(false);
 
+  const [approveRequest,      setApproveRequest]      = useState(null);
+  const [approveModalVisible, setApproveModalVisible] = useState(false);
+  const [approvingShop,       setApprovingShop]       = useState('shop1');
+  const [approving,           setApproving]           = useState(false);
+
+  const [customAlert, setCustomAlert] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    buttons: null,
+  });
+
+  const showAlert = (title, message, buttons = null) => {
+    setCustomAlert({
+      visible: true,
+      title,
+      message,
+      buttons,
+    });
+  };
+
   const handleLogout = () => {
     setProfileMenuVisible(false);
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
+    showAlert('Logout', 'Are you sure you want to logout?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Logout', style: 'destructive', onPress: () => signOut() },
     ]);
@@ -977,7 +1082,7 @@ const StaffListScreen = () => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, full_name, role, phone, email, created_at, avatar_bg, salary, is_approved')
+        .select('id, username, full_name, role, phone, email, created_at, avatar_bg, salary, is_approved, assigned_shop')
         .eq('is_approved', true)
         .order('created_at', { ascending: true });
       if (error) throw error;
@@ -988,7 +1093,7 @@ const StaffListScreen = () => {
       setStaff(withColors);
     } catch (e) {
       console.error('loadStaff error:', e.message);
-      Alert.alert('Error', 'Failed to load staff list.');
+      showAlert('Error', 'Failed to load staff list.');
     } finally {
       setLoading(false);
     }
@@ -1047,7 +1152,7 @@ const StaffListScreen = () => {
   const addHoliday = async () => {
     const d = holidayDate.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
-      Alert.alert('Invalid Date', 'Use YYYY-MM-DD');
+      showAlert('Invalid Date', 'Use YYYY-MM-DD');
       return;
     }
     setHolidaySaving(true);
@@ -1062,14 +1167,14 @@ const StaffListScreen = () => {
       setHolidayModalVisible(false);
       loadHolidays();
     } catch (e) {
-      Alert.alert('Error', e.message);
+      showAlert('Error', e.message);
     } finally {
       setHolidaySaving(false);
     }
   };
 
   const deleteHoliday = async (h) => {
-    Alert.alert('Delete Holiday', `Delete ${h.title} (${h.date})?`, [
+    showAlert('Delete Holiday', `Delete ${h.title} (${h.date})?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive',
@@ -1079,7 +1184,7 @@ const StaffListScreen = () => {
             if (error) throw error;
             loadHolidays();
           } catch (e) {
-            Alert.alert('Error', e.message);
+            showAlert('Error', e.message);
           }
         }
       }
@@ -1093,10 +1198,10 @@ const StaffListScreen = () => {
         .update({ status: 'approved', decided_at: new Date().toISOString() })
         .eq('id', req.id);
       if (error) throw error;
-      Alert.alert('✅ Approved', 'Leave approved.');
+      showAlert('✅ Approved', 'Leave approved.');
       loadLeaveRequests();
     } catch (e) {
-      Alert.alert('Error', e.message);
+      showAlert('Error', e.message);
     }
   };
 
@@ -1107,34 +1212,21 @@ const StaffListScreen = () => {
         .update({ status: 'rejected', decided_at: new Date().toISOString() })
         .eq('id', req.id);
       if (error) throw error;
-      Alert.alert('Rejected', 'Leave rejected.');
+      showAlert('Rejected', 'Leave rejected.');
       loadLeaveRequests();
     } catch (e) {
-      Alert.alert('Error', e.message);
+      showAlert('Error', e.message);
     }
   };
 
-  const handleApproveStaff = async (req) => {
-    try {
-      const { error: profErr } = await supabase
-        .from('profiles')
-        .update({ is_approved: true })
-        .eq('id', req.staff_id);
-      if (profErr) throw profErr;
-      await supabase
-        .from('pending_login_requests')
-        .update({ status: 'approved' })
-        .eq('id', req.id);
-      Alert.alert('✅ Approved', `${req.full_name || req.username} can now login.`);
-      loadPendingRequests();
-      loadStaff();
-    } catch (e) {
-      Alert.alert('Error', 'Failed to approve: ' + e.message);
-    }
+  const handleApproveStaff = (req) => {
+    setApproveRequest(req);
+    setApprovingShop('shop1');
+    setApproveModalVisible(true);
   };
 
   const handleRejectStaff = (req) => {
-    Alert.alert(
+    showAlert(
       'Reject Login',
       `Reject login request from ${req.full_name || req.username}?`,
       [
@@ -1216,7 +1308,7 @@ const StaffListScreen = () => {
   };
 
   const handleDelete = (member) => {
-    Alert.alert(
+    showAlert(
       'Delete Staff',
       `Remove ${member.full_name || member.username} from the system?`,
       [
@@ -1244,7 +1336,7 @@ const StaffListScreen = () => {
               // Remove from UI in both cases
               setStaff(prev => prev.filter(s => s.id !== member.id));
             } catch (e) {
-              Alert.alert('Error', 'Failed to remove staff member.\n' + e.message);
+              showAlert('Error', 'Failed to remove staff member.\n' + e.message);
             }
           },
         },
@@ -1315,6 +1407,7 @@ const StaffListScreen = () => {
         onClose={() => { setAddModalVisible(false); setEditingMember(null); }}
         onRefresh={loadStaff}
         editingMember={editingMember}
+        showAlert={showAlert}
       />
 
       {/* Holidays Modal */}
@@ -1374,6 +1467,90 @@ const StaffListScreen = () => {
         member={detailMember}
         onClose={() => setDetailMember(null)}
         onEdit={(m) => { setDetailMember(null); handleEdit(m); }}
+        showAlert={showAlert}
+      />
+
+      {/* Assign Shop Modal */}
+      <Modal visible={approveModalVisible} transparent animationType="fade" onRequestClose={() => setApproveModalVisible(false)}>
+        <View style={styles.modalOverlayCentered}>
+          <View style={[styles.modalCard, { width: '85%', maxWidth: 360, paddingBottom: 22 }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Assign Shop</Text>
+                <Text style={styles.modalSubtitle}>Assign a shop to complete approval</Text>
+              </View>
+              <TouchableOpacity onPress={() => setApproveModalVisible(false)} style={styles.modalCloseBtn}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ fontSize: 13, color: '#455A64', marginBottom: 16 }}>
+              Select the shop location where <Text style={{ fontWeight: '700', color: '#1A1A2E' }}>{approveRequest?.full_name || approveRequest?.username}</Text> will work:
+            </Text>
+
+            <View style={styles.fieldGroup}>
+              <View style={styles.roleRow}>
+                {[
+                  { id: 'shop1', label: 'Shop 1' },
+                  { id: 'shop2', label: 'Shop 2' },
+                ].map(s => (
+                  <TouchableOpacity
+                    key={s.id}
+                    style={[styles.roleChip, approvingShop === s.id && styles.roleChipActive]}
+                    onPress={() => setApprovingShop(s.id)}
+                    disabled={approving}>
+                    <Text style={[styles.roleChipText, approvingShop === s.id && styles.roleChipTextActive]}>
+                      {s.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={[styles.modalFooter, { borderTopWidth: 0, paddingVertical: 0, marginTop: 12 }]}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setApproveModalVisible(false)} disabled={approving}>
+                <Text style={styles.cancelBtnText}>CANCEL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveBtn, approving && { opacity: 0.7 }]}
+                onPress={async () => {
+                  setApproving(true);
+                  try {
+                    const { error: profErr } = await supabase
+                      .from('profiles')
+                      .update({ is_approved: true, assigned_shop: approvingShop })
+                      .eq('id', approveRequest.staff_id);
+                    if (profErr) throw profErr;
+                    await supabase
+                      .from('pending_login_requests')
+                      .update({ status: 'approved' })
+                      .eq('id', approveRequest.id);
+                    showAlert('✅ Approved', `${approveRequest.full_name || approveRequest.username} has been assigned to ${approvingShop === 'shop2' ? 'Shop 2' : 'Shop 1'} and approved.`);
+                    setApproveModalVisible(false);
+                    setApproveRequest(null);
+                    loadPendingRequests();
+                    loadStaff();
+                  } catch (e) {
+                    showAlert('Error', 'Failed to approve: ' + e.message);
+                  } finally {
+                    setApproving(false);
+                  }
+                }}
+                disabled={approving}>
+                {approving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>APPROVE</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Custom Alert Modal */}
+      <CustomAlertModal
+        visible={customAlert.visible}
+        title={customAlert.title}
+        message={customAlert.message}
+        buttons={customAlert.buttons}
+        onClose={() => setCustomAlert(prev => ({ ...prev, visible: false }))}
       />
 
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -1747,6 +1924,10 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-start', alignItems: 'flex-end',
     paddingTop: 68, paddingRight: 16,
+  },
+  modalOverlayCentered: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center', alignItems: 'center',
   },
   dropdownMenu: {
     backgroundColor: '#fff', borderRadius: 18, width: 230,

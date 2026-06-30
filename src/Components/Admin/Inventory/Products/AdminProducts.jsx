@@ -15,6 +15,7 @@ import Svg2, { Path } from 'react-native-svg';
 import Qrcode from '../../../../assets/qr.svg';
 import Edit from '../../../../assets/edit.svg';
 import Delete from '../../../../assets/delete.svg'
+import DownArrow from '../../../../assets/down-arrow.svg';
 import { Platform, PermissionsAndroid } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 const BackIcon = () => (
@@ -43,6 +44,7 @@ export default function AdminProductsScreen() {
   const [saving, setSaving]             = useState(false);
   const [uploading, setUploading]       = useState(false);
   const [showScanner, setShowScanner]   = useState(false);
+  const [showShopDropdown, setShowShopDropdown] = useState(false);
 
 
   useFocusEffect(useCallback(() => { loadProducts(); }, [brandId]));
@@ -173,6 +175,7 @@ export default function AdminProductsScreen() {
     setForm({ ...EMPTY_FORM, shop: defaultShop });
     setImageUri(null);
     setIsAvailable(true);
+    setShowShopDropdown(false);
     setModalVisible(true);
   };
 
@@ -191,6 +194,7 @@ export default function AdminProductsScreen() {
 
     setImageUri(product.image || null);
     setIsAvailable(product.available !== false);
+    setShowShopDropdown(false);
     setModalVisible(true);
   };
 
@@ -466,7 +470,44 @@ const handleSave = async () => {
               <TextInput style={s.inp} placeholder="e.g. Black 256GB" placeholderTextColor="#bbb" value={form.color} onChangeText={v => setForm(f => ({ ...f, color: v }))} editable={!isBusy} />
 
               <Text style={s.lbl}>SHOP NUMBER</Text>
-              <TextInput style={s.inp} placeholder="e.g. shop1" placeholderTextColor="#bbb" value={form.shop} onChangeText={v => setForm(f => ({ ...f, shop: v }))} editable={!isBusy} />
+              <TouchableOpacity
+                style={[s.dropdown, showShopDropdown && s.dropdownOpen]}
+                onPress={() => setShowShopDropdown(!showShopDropdown)}
+                disabled={isBusy}
+                activeOpacity={0.8}
+              >
+                <Text style={s.dropdownSelected}>
+                  {form.shop === 'shop1' ? 'Shop 1' : form.shop === 'shop2' ? 'Shop 2' : 'Select Shop'}
+                </Text>
+                <DownArrow width={14} height={14} fill="#888" />
+              </TouchableOpacity>
+
+              {showShopDropdown && (
+                <View style={s.dropdownList}>
+                  <TouchableOpacity
+                    style={[s.dropdownItem, form.shop === 'shop1' && s.dropdownItemActive]}
+                    onPress={() => {
+                      setForm(f => ({ ...f, shop: 'shop1' }));
+                      setShowShopDropdown(false);
+                    }}
+                  >
+                    <Text style={[s.dropdownItemText, form.shop === 'shop1' && s.dropdownItemTextActive]}>
+                      Shop 1
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.dropdownItem, form.shop === 'shop2' && s.dropdownItemActive]}
+                    onPress={() => {
+                      setForm(f => ({ ...f, shop: 'shop2' }));
+                      setShowShopDropdown(false);
+                    }}
+                  >
+                    <Text style={[s.dropdownItemText, form.shop === 'shop2' && s.dropdownItemTextActive]}>
+                      Shop 2
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
               <Text style={s.lbl}>DESCRIPTION</Text>
               <TextInput style={[s.inp, s.textarea]} placeholder="Product details..." placeholderTextColor="#bbb" multiline numberOfLines={3} value={form.description} onChangeText={v => setForm(f => ({ ...f, description: v }))} editable={!isBusy} />
@@ -858,4 +899,40 @@ deleteBtn: {
   scannerClose: { color: '#fff', fontSize: 16, fontWeight: '600' },
   scannerTitle: { color: '#fff', fontSize: 16, fontWeight: '800' },
   scannerInstruction: { fontSize: 15, color: '#fff', padding: 20, textAlign: 'center' },
+
+  // Dropdown style overrides
+  dropdown: {
+    backgroundColor: '#F8F9FF', borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    borderWidth: 1, borderColor: '#E2E8F0',
+  },
+  dropdownSelected: { fontSize: 14, color: '#1E293B', fontWeight: '600' },
+  dropdownOpen: {
+    backgroundColor: '#fff',
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  dropdownList: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 2,
+  },
+  dropdownItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  dropdownItemActive: { backgroundColor: '#EEF0FF' },
+  dropdownItemText: { fontSize: 14, color: '#64748B' },
+  dropdownItemTextActive: { color: '#2D2F8E', fontWeight: '700' },
 });

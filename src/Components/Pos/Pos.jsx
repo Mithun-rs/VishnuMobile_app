@@ -14,6 +14,7 @@ import { CachedImage } from "../../lib/imageUtils";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../context/AuthContext";
 import Filter from '../../assets/filter_icon.svg';
 import Cart from '../../assets/cart.svg';
 import Search from '../../assets/search-icon.svg';
@@ -60,6 +61,7 @@ const ProductCard = memo(({ product, added, onAdd, onPress }) => (
 
 export default function PosScreen() {
   const navigation = useNavigation();
+  const { profile } = useAuth();
   const [search, setSearch]                   = useState("");
   const [activeBrand, setActiveBrand]         = useState(null);
   const [showBrandFilter, setShowBrandFilter] = useState(false);
@@ -70,9 +72,16 @@ export default function PosScreen() {
   const [loading, setLoading]                 = useState(true);
   const [selectedShop, setSelectedShop]       = useState('Shop 1');
 
+  const isStaff = profile?.role !== 'admin' && profile?.role !== 'manager';
+  const userAssignedShopId = profile?.assigned_shop || 'shop1';
+
   useFocusEffect(
     useCallback(() => {
       const getActiveShop = async () => {
+        if (isStaff) {
+          setSelectedShop(userAssignedShopId === 'shop2' ? 'Shop 2' : 'Shop 1');
+          return;
+        }
         try {
           const savedShop = await AsyncStorage.getItem('selectedShop');
           if (savedShop) {
@@ -82,7 +91,7 @@ export default function PosScreen() {
       };
       getActiveShop();
       loadAll(); // Always reload on focus so newly added products appear immediately
-    }, [])
+    }, [profile])
   );
 
   const handleShopChange = async (shop) => {
@@ -105,10 +114,12 @@ export default function PosScreen() {
   // Full data load — runs once on first open, then served from cache
   const loadAll = async () => {
     let savedShop = null;
-    try {
-      savedShop = await AsyncStorage.getItem('selectedShop');
-    } catch (_) {}
-    const dbShopVal = savedShop ? savedShop.toLowerCase().replace(/\s+/g, '') : 'shop1';
+    if (!isStaff) {
+      try {
+        savedShop = await AsyncStorage.getItem('selectedShop');
+      } catch (_) {}
+    }
+    const dbShopVal = isStaff ? userAssignedShopId : (savedShop ? savedShop.toLowerCase().replace(/\s+/g, '') : 'shop1');
 
     // ── Serve from cache if fresh ───────────────────────────────────
     if (_posCache[dbShopVal] && (Date.now() - _posCacheTime[dbShopVal]) < POS_CACHE_TTL) {
@@ -215,22 +226,24 @@ export default function PosScreen() {
   const ListHeader = (
     <>
       {/* SHOP TOGGLE BAR */}
-      <View style={styles.toggleContainer}>
-        <TouchableOpacity
-          style={[styles.toggleBtn, selectedShop === 'Shop 1' && styles.toggleBtnActive]}
-          onPress={() => handleShopChange('Shop 1')}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.toggleBtnText, selectedShop === 'Shop 1' && styles.toggleBtnTextActive]}>Shop 1</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.toggleBtn, selectedShop === 'Shop 2' && styles.toggleBtnActive]}
-          onPress={() => handleShopChange('Shop 2')}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.toggleBtnText, selectedShop === 'Shop 2' && styles.toggleBtnTextActive]}>Shop 2</Text>
-        </TouchableOpacity>
-      </View>
+      {!isStaff && (
+        <View style={styles.toggleContainer}>
+          <TouchableOpacity
+            style={[styles.toggleBtn, selectedShop === 'Shop 1' && styles.toggleBtnActive]}
+            onPress={() => handleShopChange('Shop 1')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.toggleBtnText, selectedShop === 'Shop 1' && styles.toggleBtnTextActive]}>Shop 1</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleBtn, selectedShop === 'Shop 2' && styles.toggleBtnActive]}
+            onPress={() => handleShopChange('Shop 2')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.toggleBtnText, selectedShop === 'Shop 2' && styles.toggleBtnTextActive]}>Shop 2</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>
