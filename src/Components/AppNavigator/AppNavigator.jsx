@@ -1,13 +1,43 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, Animated, StyleSheet,
-  Dimensions, StatusBar, Image
+  Dimensions, StatusBar, Image, Modal, TouchableOpacity, Alert
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { AuthProvider, useAuth } from '../../context/AuthContext';
 import { ROLES, ADMIN_ROLES } from '../../constants';
+
+// ─── Global Alert Interceptor ─────────────────────────────────────────────────
+let globalAlertHandler = null;
+const nativeAlert = Alert.alert;
+
+Alert.alert = (title, message, buttons, options) => {
+  let t = title;
+  let m = message;
+  let b = buttons;
+  
+  if (typeof message === 'object' && Array.isArray(message)) {
+    b = message;
+    m = '';
+  }
+  
+  // Suppress/remove debug alerts and activity logs
+  const isDebug = String(t || '').toLowerCase().includes('debug') || String(m || '').toLowerCase().includes('debug');
+  const isActivityLog = String(t || '').toLowerCase().includes('activity log') || String(m || '').toLowerCase().includes('activity log');
+  
+  if (isDebug || isActivityLog) {
+    console.log(`[Alert Suppressed] ${t}: ${m}`);
+    return;
+  }
+  
+  if (globalAlertHandler) {
+    globalAlertHandler(t, m, b, options);
+  } else {
+    nativeAlert(t, m, b, options);
+  }
+};
 
 import { AdminTabs, StaffTabs }  from '../NavBar/NavBar';
 import AddCategoryScreen         from '../Admin/Inventory/Category/Add_Category';
@@ -148,6 +178,78 @@ function PendingApprovalScreen() {
   );
 }
 
+// ─── Custom Global Alert Modal ────────────────────────────────────────────────
+function CustomAlertModal() {
+  const [visible, setVisible] = useState(false);
+  const [title, setTitle]     = useState('');
+  const [message, setMessage] = useState('');
+  const [buttons, setButtons] = useState(null);
+
+  useEffect(() => {
+    globalAlertHandler = (t, m, b) => {
+      setTitle(t);
+      setMessage(m || '');
+      setButtons(b || null);
+      setVisible(true);
+    };
+    return () => {
+      globalAlertHandler = null;
+    };
+  }, []);
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>
+      <View style={s.modalOverlayCentered}>
+        <View style={s.modalCard}>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: '#1A1A2E', textAlign: 'center', marginBottom: 8 }}>
+              {title}
+            </Text>
+            {!!message && (
+              <Text style={{ fontSize: 13, color: '#64748B', textAlign: 'center', lineHeight: 18 }}>
+                {message}
+              </Text>
+            )}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, justifyContent: 'center' }}>
+            {buttons && buttons.length > 0 ? (
+              buttons.map((btn, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={[
+                    btn.style === 'destructive' ? s.actionBtnDelete : s.cancelBtn,
+                    { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center' }
+                  ]}
+                  onPress={() => {
+                    setVisible(false);
+                    btn.onPress?.();
+                  }}
+                >
+                  <Text style={[
+                    btn.style === 'destructive' ? { color: '#EF5350', fontWeight: '800' } : { color: '#2D2F8E', fontWeight: '800' },
+                    { fontSize: 12, letterSpacing: 0.5 }
+                  ]}>
+                    {(btn.text || 'OK').toUpperCase()}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <TouchableOpacity
+                style={[s.saveBtn, { flex: 1, paddingVertical: 12, borderRadius: 10 }]}
+                onPress={() => setVisible(false)}
+              >
+                <Text style={[s.saveBtnText, { fontSize: 12, letterSpacing: 0.5, color: '#fff', textAlign: 'center', fontWeight: '850' }]}>OK</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 // ─── Root Navigator ───────────────────────────────────────────────────────────
 function RootNavigator() {
   const { session, profile, loading } = useAuth();
@@ -218,6 +320,9 @@ function AppContent() {
       <NavigationContainer>
         <RootNavigator />
       </NavigationContainer>
+
+      {/* Global Custom Alert Modal */}
+      <CustomAlertModal />
 
       {/* Splash sits on top as overlay */}
 {!splashDone && (
@@ -324,4 +429,50 @@ dot: {
   pendingTitle:     { fontSize: 22, fontWeight: '900', color: '#1A1A2E', marginBottom: 12 },
   pendingSubtitle:  { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 22, marginBottom: 28 },
   pendingLogoutBtn: { fontSize: 13, fontWeight: '700', color: '#475569' },
+  modalOverlayCentered: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10000,
+  },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    width: '85%',
+    maxWidth: 320,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  cancelBtn: {
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  actionBtnDelete: {
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1.5,
+    borderColor: '#FCA5A5',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  saveBtn: {
+    backgroundColor: '#2D2F8E',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  saveBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
 });

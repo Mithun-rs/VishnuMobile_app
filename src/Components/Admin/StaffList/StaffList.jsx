@@ -343,7 +343,7 @@ const computeSalary = (baseSalary, attendanceLogs, approvedLeaves, holidays) => 
 };
 
 // ─── Staff Detail Modal ───────────────────────────────────────────────────────
-const StaffDetailModal = ({ visible, member, onClose, onEdit, showAlert }) => {
+const StaffDetailModal = ({ visible, member, onClose, onEdit }) => {
   const [attendance,      setAttendance]      = useState([]);
   const [loadingAtt,      setLoadingAtt]      = useState(false);
   const [approvedLeaves,  setApprovedLeaves]  = useState([]);
@@ -412,11 +412,11 @@ const StaffDetailModal = ({ visible, member, onClose, onEdit, showAlert }) => {
   const handleSaveDeduction = async () => {
     const amt = parseFloat(dedAmount.trim());
     if (isNaN(amt) || amt < 0) {
-      showAlert('Invalid', 'Enter a valid deduction amount (0 or more).');
+      Alert.alert('Invalid', 'Enter a valid deduction amount (0 or more).');
       return;
     }
     if (!dedReason.trim()) {
-      showAlert('Missing', 'Please enter a reason for the deduction.');
+      Alert.alert('Missing', 'Please enter a reason for the deduction.');
       return;
     }
     setSavingDed(true);
@@ -440,16 +440,16 @@ const StaffDetailModal = ({ visible, member, onClose, onEdit, showAlert }) => {
         setDeduction(data);
       }
       setEditingDed(false);
-      showAlert('✅ Saved', 'Deduction updated successfully.');
+      Alert.alert('✅ Saved', 'Deduction updated successfully.');
     } catch (e) {
-      showAlert('Error', e.message);
+      Alert.alert('Error', e.message);
     } finally {
       setSavingDed(false);
     }
   };
 
   const handleRemoveDeduction = () => {
-    showAlert('Remove Deduction', 'Remove this deduction for the month?', [
+    Alert.alert('Remove Deduction', 'Remove this deduction for the month?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove', style: 'destructive',
@@ -461,7 +461,7 @@ const StaffDetailModal = ({ visible, member, onClose, onEdit, showAlert }) => {
             setDedReason('');
             setEditingDed(false);
           } catch (e) {
-            showAlert('Error', e.message);
+            Alert.alert('Error', e.message);
           }
         }
       }
@@ -776,7 +776,7 @@ const StaffDetailModal = ({ visible, member, onClose, onEdit, showAlert }) => {
 };
 
 // ─── Add / Edit Staff Modal ───────────────────────────────────────────────────
-const AddStaffModal = ({ visible, onClose, onRefresh, editingMember, showAlert }) => {
+const AddStaffModal = ({ visible, onClose, onRefresh, editingMember }) => {
   const isEdit = !!editingMember;
 
   const [fullName,  setFullName]  = useState('');
@@ -807,8 +807,8 @@ const AddStaffModal = ({ visible, onClose, onRefresh, editingMember, showAlert }
 
   const handleSave = async () => {
     if (!isEdit) {
-      if (!fullName.trim()) { showAlert('Missing', 'Please enter the full name.'); return; }
-      if (!username.trim()) { showAlert('Missing', 'Please enter a username.');    return; }
+      if (!fullName.trim()) { Alert.alert('Missing', 'Please enter the full name.'); return; }
+      if (!username.trim()) { Alert.alert('Missing', 'Please enter a username.');    return; }
     }
 
     setSaving(true);
@@ -828,7 +828,7 @@ const AddStaffModal = ({ visible, onClose, onRefresh, editingMember, showAlert }
           .update(updates)
           .eq('id', editingMember.id);
         if (error) throw error;
-        showAlert('✅ Updated', 'Staff member updated successfully!');
+        Alert.alert('✅ Updated', 'Staff member updated successfully!');
       } else {
         const { data: edgeData, error: edgeError } = await supabase.functions.invoke('create-staff', {
           body: {
@@ -853,7 +853,7 @@ const AddStaffModal = ({ visible, onClose, onRefresh, editingMember, showAlert }
           }).eq('id', edgeData.user.id);
         }
 
-        showAlert(
+        Alert.alert(
           '✅ Staff Added',
           `${fullName.trim()} added as ${role}.\n\nUsername: ${username.trim()}\nPassword: ${autoPass}\n\nThey must wait for your approval before logging in.`
         );
@@ -866,7 +866,7 @@ const AddStaffModal = ({ visible, onClose, onRefresh, editingMember, showAlert }
       let errorMsg = e.message || 'Failed to save staff.';
       if (e.context?.status) errorMsg = `Error ${e.context.status}: ${errorMsg}`;
       else if (e.status)     errorMsg = `Error ${e.status}: ${errorMsg}`;
-      showAlert('Error', errorMsg);
+      Alert.alert('Error', errorMsg);
     } finally {
       setSaving(false);
     }
@@ -1071,7 +1071,7 @@ const StaffListScreen = () => {
 
   const handleLogout = () => {
     setProfileMenuVisible(false);
-    showAlert('Logout', 'Are you sure you want to logout?', [
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Logout', style: 'destructive', onPress: () => signOut() },
     ]);
@@ -1093,7 +1093,7 @@ const StaffListScreen = () => {
       setStaff(withColors);
     } catch (e) {
       console.error('loadStaff error:', e.message);
-      showAlert('Error', 'Failed to load staff list.');
+      Alert.alert('Error', 'Failed to load staff list.');
     } finally {
       setLoading(false);
     }
@@ -1152,7 +1152,7 @@ const StaffListScreen = () => {
   const addHoliday = async () => {
     const d = holidayDate.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
-      showAlert('Invalid Date', 'Use YYYY-MM-DD');
+      Alert.alert('Invalid Date', 'Use YYYY-MM-DD');
       return;
     }
     setHolidaySaving(true);
@@ -1167,14 +1167,14 @@ const StaffListScreen = () => {
       setHolidayModalVisible(false);
       loadHolidays();
     } catch (e) {
-      showAlert('Error', e.message);
+      Alert.alert('Error', e.message);
     } finally {
       setHolidaySaving(false);
     }
   };
 
   const deleteHoliday = async (h) => {
-    showAlert('Delete Holiday', `Delete ${h.title} (${h.date})?`, [
+    Alert.alert('Delete Holiday', `Delete ${h.title} (${h.date})?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive',
@@ -1184,7 +1184,7 @@ const StaffListScreen = () => {
             if (error) throw error;
             loadHolidays();
           } catch (e) {
-            showAlert('Error', e.message);
+            Alert.alert('Error', e.message);
           }
         }
       }
@@ -1198,10 +1198,10 @@ const StaffListScreen = () => {
         .update({ status: 'approved', decided_at: new Date().toISOString() })
         .eq('id', req.id);
       if (error) throw error;
-      showAlert('✅ Approved', 'Leave approved.');
+      Alert.alert('✅ Approved', 'Leave approved.');
       loadLeaveRequests();
     } catch (e) {
-      showAlert('Error', e.message);
+      Alert.alert('Error', e.message);
     }
   };
 
@@ -1212,10 +1212,10 @@ const StaffListScreen = () => {
         .update({ status: 'rejected', decided_at: new Date().toISOString() })
         .eq('id', req.id);
       if (error) throw error;
-      showAlert('Rejected', 'Leave rejected.');
+      Alert.alert('Rejected', 'Leave rejected.');
       loadLeaveRequests();
     } catch (e) {
-      showAlert('Error', e.message);
+      Alert.alert('Error', e.message);
     }
   };
 
@@ -1226,7 +1226,7 @@ const StaffListScreen = () => {
   };
 
   const handleRejectStaff = (req) => {
-    showAlert(
+    Alert.alert(
       'Reject Login',
       `Reject login request from ${req.full_name || req.username}?`,
       [
@@ -1308,7 +1308,7 @@ const StaffListScreen = () => {
   };
 
   const handleDelete = (member) => {
-    showAlert(
+    Alert.alert(
       'Delete Staff',
       `Remove ${member.full_name || member.username} from the system?`,
       [
@@ -1336,7 +1336,7 @@ const StaffListScreen = () => {
               // Remove from UI in both cases
               setStaff(prev => prev.filter(s => s.id !== member.id));
             } catch (e) {
-              showAlert('Error', 'Failed to remove staff member.\n' + e.message);
+              Alert.alert('Error', 'Failed to remove staff member.\n' + e.message);
             }
           },
         },
@@ -1525,13 +1525,13 @@ const StaffListScreen = () => {
                       .from('pending_login_requests')
                       .update({ status: 'approved' })
                       .eq('id', approveRequest.id);
-                    showAlert('✅ Approved', `${approveRequest.full_name || approveRequest.username} has been assigned to ${approvingShop === 'shop2' ? 'Shop 2' : 'Shop 1'} and approved.`);
+                    Alert.alert('✅ Approved', `${approveRequest.full_name || approveRequest.username} has been assigned to ${approvingShop === 'shop2' ? 'Shop 2' : 'Shop 1'} and approved.`);
                     setApproveModalVisible(false);
                     setApproveRequest(null);
                     loadPendingRequests();
                     loadStaff();
                   } catch (e) {
-                    showAlert('Error', 'Failed to approve: ' + e.message);
+                    Alert.alert('Error', 'Failed to approve: ' + e.message);
                   } finally {
                     setApproving(false);
                   }
