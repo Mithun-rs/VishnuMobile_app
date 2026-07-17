@@ -91,9 +91,13 @@ const LogoutIcon = ({ size = 18, color = '#ef4444' }) => (
   useEffect(() => {
     const loadCategories = async () => {
       try {
+        const savedShop = await AsyncStorage.getItem('selectedShop');
+        const dbShopVal = savedShop ? savedShop.toLowerCase().replace(/\s+/g, '') : 'shop1';
+
         const { data, error } = await supabase
           .from('categories')
           .select('id, name, icon')
+          .eq('shop', dbShopVal)
           .order('name');
 
         if (error) throw error;

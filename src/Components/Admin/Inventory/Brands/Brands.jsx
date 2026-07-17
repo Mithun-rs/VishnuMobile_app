@@ -283,12 +283,16 @@ export default function BrandsScreen() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const { data: brandsData, error: brandsErr } = await supabase
-        .from('brands').select('*').eq('category_id', categoryId).order('name');
-      if (brandsErr) throw brandsErr;
-
       const savedShop = await AsyncStorage.getItem('selectedShop');
       const dbShopVal = savedShop ? savedShop.toLowerCase().replace(/\s+/g, '') : 'shop1';
+
+      const { data: brandsData, error: brandsErr } = await supabase
+        .from('brands')
+        .select('*')
+        .eq('category_id', categoryId)
+        .eq('shop', dbShopVal)
+        .order('name');
+      if (brandsErr) throw brandsErr;
 
       const { data: products, error: prodErr } = await supabase
         .from('products').select('brand_id').eq('shop', dbShopVal);
@@ -374,10 +378,14 @@ export default function BrandsScreen() {
           .eq('id', editingBrand.id);
         if (error) throw error;
       } else {
+        const savedShop = await AsyncStorage.getItem('selectedShop');
+        const dbShopVal = savedShop ? savedShop.toLowerCase().replace(/\s+/g, '') : 'shop1';
+
         const { error } = await supabase.from('brands').insert({
           category_id: categoryId, 
           name: brandName.trim(), 
           logo_url: logoUrl.trim() || null,
+          shop: dbShopVal,
         });
         if (error) throw error;
 

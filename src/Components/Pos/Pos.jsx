@@ -144,6 +144,7 @@ export default function PosScreen() {
         supabase
           .from('brands')
           .select('id, name')
+          .eq('shop', dbShopVal)
           .order('name'),
         AsyncStorage.getItem('cart'),
       ]);

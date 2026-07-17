@@ -13,6 +13,7 @@ import {
 import Person from '../../../../assets/person.svg';
 import BackArrow from '../../../../assets/back-arrow.svg';
 import { useNavigation } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../../../lib/supabase";
 
 // ── Emoji options for category icons ──────────────────────────────────
@@ -40,9 +41,13 @@ export default function AddCategoryScreen() {
 
     setSaving(true);
     try {
+      const savedShop = await AsyncStorage.getItem('selectedShop');
+      const dbShopVal = savedShop ? savedShop.toLowerCase().replace(/\s+/g, '') : 'shop1';
+
       const { error } = await supabase.from('categories').insert({
         name: categoryName.trim(),
         icon: selectedIcon,
+        shop: dbShopVal,
       });
 
       if (error) {

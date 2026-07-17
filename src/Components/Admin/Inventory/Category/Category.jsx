@@ -79,6 +79,7 @@ export default function InventoryScreen() {
     setSelectedShop(shop);
     try {
       await AsyncStorage.setItem('selectedShop', shop);
+      loadAll();
     } catch (e) {
       console.warn('Failed to save selected shop:', e.message);
     }
@@ -87,17 +88,22 @@ export default function InventoryScreen() {
   const loadAll = async () => {
     setLoading(true);
     try {
+      const savedShop = await AsyncStorage.getItem('selectedShop');
+      const dbShopVal = savedShop ? savedShop.toLowerCase().replace(/\s+/g, '') : 'shop1';
+
       // Fetch categories
       const { data: cats, error: catErr } = await supabase
         .from('categories')
         .select('id, name, icon')
+        .eq('shop', dbShopVal)
         .order('name');
       if (catErr) throw catErr;
 
       // Fetch brand counts grouped by category_id
       const { data: brands, error: brandsErr } = await supabase
         .from('brands')
-        .select('category_id');
+        .select('category_id')
+        .eq('shop', dbShopVal);
       if (brandsErr) throw brandsErr;
 
       // Build count map: { categoryId: brandCount }
